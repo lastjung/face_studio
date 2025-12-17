@@ -273,7 +273,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                 const genAI = new GoogleGenerativeAI(apiKey);
                 const visionModel = genAI.getGenerativeModel({ model: VISION_MODEL });
 
-                const analysisPrompt = "Describe the person in this image. Focus closely on physical features: eye color, hair style/color, facial structure, skin tone, age, and ethnicity. Be concise. Do not describe clothing or background.";
+                const analysisPrompt = "Analyze this face in extreme detail for the purpose of reproducing it in a new photo. Describe the ENTIRE facial structure, EXACT skin tone (e.g., 'pale ivory', 'fair with pink undertones', 'tan olive'), specific eye shape/color, nose shape, and lip shape. Mention any distinctive features (moles, scars). Do NOT describe clothing or background. Output ONLY the physical description.";
 
                 const visionResult = await visionModel.generateContent([
                     analysisPrompt,
@@ -284,7 +284,13 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                 // Combine User Prompt + Face Description
                 // Strategy: "A person looking like [Face Description] in the style of [User Prompt]"
                 // This forces the model to generate the specific person first, then apply the costume/style.
-                finalPrompt = `A high quality, photorealistic photo of a person with the following physical features: ${faceDescription}. \n\nThe person is ${prompt}. \n\n(Ensure the face matches the physical description above exactly, rather than using a generic celebrity face).`;
+                const realismKeywords = "8k resolution, raw photo, dslr, 85mm lens, depth of field, bokeh, soft lighting, neutral lighting, white balance, high detail, film grain, Fujifilm XT3";
+
+                // New Prompt Structure: Framing + Context -> Identity -> Style
+                // We move 'prompt' (context) to the front so the model establishes the scene/clothing first.
+                // CHANGED: "Medium-full shot" -> "Full body shot" to force dress visibility.
+                // CHANGED: Added "elegant abstract background" to remove text.
+                finalPrompt = `Full body shot (showing entire dress from head to toe) of ${prompt}. \n\nThe subject has the following physical features: ${faceDescription}. \n\nEnvironment: Elegant abstract luxury event background, cinematic lighting, no text, no signage. \n\nStyle used: ${realismKeywords}. \n\n(CRITICAL: The face shape must not be distorted or widened. Keep the subject's skin tone EXACTLY as described. Do NOT add warm filters or tanning. Ensure the dress/outfit is COMPLETELY VISIBLE).`;
                 // console.log("Vision Description:", faceDescription);
 
             } catch (visionError: any) {
@@ -430,5 +436,86 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
             error: error.message || 'Unknown error occurred',
             errorLogs: [...errorLogs, error.message]
         };
+    }
+}
+// --- Toss Payments Logic ---
+
+export async function confirmTossPayment(orderId: string, paymentKey: string, amount: number, planId: string) {
+    const supabase = await createClient(); // For Auth Check
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) return { success: false, error: "Unauthorized" };
+
+    const secretKey = process.env.TOSS_SECRET_KEY;
+    if (!secretKey) return { success: false, error: "Server Configuration Error" };
+
+    try {
+        // 1. Verify Payment with Toss API
+        const encryptedSecretKey = "Basic " + Buffer.from(secretKey + ":").toString('base64');
+        const response = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
+            method: 'POST',
+            headers: {
+                Authorization: encryptedSecretKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                orderId: orderId,
+                amount: amount,
+                paymentKey: paymentKey,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error("Payment Confirmation Failed:", data);
+            return { success: false, error: data.message || "Payment Confirmation Failed" };
+        }
+
+        // 2. Add Credits (using Admin Client)
+        const adminSupabase = createAdminClient();
+
+        // 2.1 Fetch Plan to confirm credit amount
+        const { data: plan, error: planError } = await adminSupabase
+            .from('pricing_plans')
+            .select('*')
+            .eq('id', planId)
+            .single();
+
+        if (planError || !plan) {
+            // Money paid but plan not found. Critical log needed.
+            console.error(`CRITICAL: Money paid (${amount}) but plan ${planId} not found.`);
+            return { success: false, error: "Payment successful but failed to find plan details. Please contact support." };
+        }
+
+        // 2.2 Add Credit Source
+        const { error: sourceError } = await adminSupabase
+            .from('credit_sources')
+            .insert({
+                user_id: user.id,
+                plan_id: plan.id,
+                initial_credits: plan.credits,
+                remaining_credits: plan.credits,
+                status: 'active'
+            });
+
+        if (sourceError) {
+            console.error(`CRITICAL: Payment confirmed but failed to add source: ${sourceError.message}`);
+            return { success: false, error: "Payment successful but credit add failed. Please contact support." };
+        }
+
+        // 2.3 Log Transaction
+        await adminSupabase.from('credit_transactions').insert({
+            user_id: user.id,
+            amount: plan.credits,
+            type: 'purchase',
+            description: `Purchased ${plan.name} (${data.method})`
+        });
+
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Confirm Payment Error:", error);
+        return { success: false, error: error.message };
     }
 }

@@ -3,9 +3,13 @@
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { usePathname } from 'next/navigation';
 
 export default function Header() {
     const { isLoggedIn, openLoginModal, credits } = useAuth();
+    const pathname = usePathname();
+
+    if (pathname?.startsWith('/admin')) return null;
 
     const handleProtectedLink = (e: React.MouseEvent, href?: string) => {
         console.log("Link clicked. IsLoggedIn:", isLoggedIn);

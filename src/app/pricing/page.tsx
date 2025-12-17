@@ -84,23 +84,8 @@ export default function PricingPage() {
             return;
         }
 
-        // 컨펌 대화상자 대신 토스트로 처리하거나, 바로 진행 (테스트용이므로 바로 진행)
-        toast.info(`'${plan.name}' 구매를 진행합니다.`);
-
-        setPurchasingId(plan.id);
-        try {
-            const result = await purchaseCredit(plan.id);
-            if (result.success) {
-                toast.success(`'${plan.name}' 구매 완료! 크레딧이 충전되었습니다.`);
-                await refreshCredits(); // Update global context
-            } else {
-                toast.error(`구매 실패: ${result.error}`);
-            }
-        } catch (e: any) {
-            toast.error(`오류 발생: ${e.message}`);
-        } finally {
-            setPurchasingId(null);
-        }
+        // Redirect to Payment Page
+        router.push(`/payment?planId=${plan.id}`);
     };
 
     return (

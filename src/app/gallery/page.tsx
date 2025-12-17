@@ -60,7 +60,7 @@ export default function GalleryPage() {
 
             if (data) {
                 // Map DB schema to GalleryImage interface
-                const newImages: GalleryImage[] = data.map(img => ({
+                const newImages: GalleryImage[] = data.map((img: any) => ({
                     id: img.id,
                     url: img.storage_url, // URL from DB
                     prompt: img.prompt,

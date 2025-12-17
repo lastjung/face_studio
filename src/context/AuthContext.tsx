@@ -15,6 +15,7 @@ interface AuthContextType {
     user: any | null;
     credits: number;
     refreshCredits: () => Promise<void>;
+    supabase: any; // Type as any or SupabaseClient
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,8 +27,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [credits, setCredits] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Supabase client
-    const supabase = createClient();
+    // Supabase client - Initialize once to prevent infinite loops in useEffect
+    const [supabase] = useState(() => createClient());
     const pathname = usePathname();
 
     const fetchCredits = async (userId: string) => {
@@ -50,18 +51,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Check active session
         const checkUser = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                // Force timeout if getSession hangs (e.g. network or storage issues)
+                // Resolve with null instead of reject to prevent app crash
+                const timeoutPromise = new Promise((resolve) =>
+                    setTimeout(() => {
+                        console.warn("AuthContext: Session check timed out, defaulting to logged out.");
+                        resolve({ data: { session: null } });
+                    }, 5000) // Lower back to 5s as we are failing safely now
+                );
+
+                const sessionPromise = supabase.auth.getSession();
+
+                // @ts-ignore
+                const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+                const session = data?.session;
+
                 if (session?.user) {
                     setUser(session.user);
                     setIsLoggedIn(true);
                     await fetchCredits(session.user.id);
                 } else {
-                    setUser(null);
-                    setIsLoggedIn(false);
-                    setCredits(0);
+                    // Only overwrite if we are not already logged in (checked via onAuthStateChange)
+                    // This prevents a race condition where onAuthStateChange logs us in, but checkUser timeout logs us out.
+                    if (!user) {
+                        setUser(null);
+                        setIsLoggedIn(false);
+                        setCredits(0);
+                    }
                 }
             } catch (error) {
                 console.error("Error checking session:", error);
+                // Safe default
+                setUser(null);
+                setIsLoggedIn(false);
             } finally {
                 setIsLoading(false);
             }
@@ -131,7 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             closeLoginModal,
             user,
             credits,
-            refreshCredits
+            refreshCredits,
+            supabase // Export the stable instance
         }}>
             {children}
         </AuthContext.Provider>
