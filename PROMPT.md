@@ -197,3 +197,95 @@ Use **Gemini Vision** to re-analyze the *generated output image* specifically fo
     -   Clicking it reads out the vivid description using the Web Speech API or a cloud TTS service.
 -   **Screen Reader Optimization**: Ensure this text is accessible to screen readers (ARIA labels).
 
+# Credit System Requirements (크레딧 시스템)
+
+크레딧 시스템을 처음부터 끝까지 완전히 구현해줘.
+
+## 요구사항
+
+### 크레딧 정책
+- 이미지 생성 시 모델별 크레딧 차감: 터보(1), 기본(2), 고품질(3)
+- 플래시 모델은 선택 옵션에서 제거
+- 크레딧 구매 시 추가
+- 먼저 구매한 크레딧부터 먼저 소진 (FIFO)
+
+### 요금제
+- Starter: 10 크레딧, ₩3,900
+- Basic: 30 크레딧, ₩9,800
+- Pro: 60 크레딧, ₩18,800
+
+### UI
+- 헤더바 프로필 버튼 왼쪽에 현재 크레딧 표시
+- 사용자가 이미지를 생성해 크레딧을 소진하는 경우 잔여 크레딧 화면에 실시간 업데이트
+- /pricing 페이지 생성 (요금제 3개 카드로 표시, 구매 버튼)
+- 헤더바의 "요금제 (/pricing)", "사용 내역 (/credits/history)" 페이지 생성
+- 헤더바의 "요금제" "사용 내역" 버튼을 누르면 이동 (헤더바는 그대로 유지)
+- 크레딧 부족 시 에러 메시지 표시
+- 환불 요청 버튼 및 모달
+
+### 크레딧 소진 방식 (FIFO)
+- 이미지 생성 시 자동 크레딧 차감
+- 크레딧 구매 (지금은 테스트용, 나중에 토스페이먼츠 연동 예정)
+- First-in-First-Out 방식 적용
+- /pricing 페이지는 pricing_plans 테이블에서 요금제 정보 조회
+- 크레딧 사용 내역 페이지 (/credits/history)
+- 각 구매건별로 사용 여부 표시
+
+### 환불 정책 (중요!)
+1. 환불 요청 조건: 각 구매건 별로 구매한 크레딧을 하나도 사용하지 않은 경우에만 가능
+2. 크레딧 구매 후 7일 이내에만 환불 요청 가능
+3. 크레딧을 1개라도 사용한 구매건은 환불 요청 불가 (UI에서 버튼 비활성화)
+4. 사용자가 환불 요청 시 해당 구매건의 상태가 'pending_refund'로 변경
+5. 환불 대기 중인 구매건의 크레딧은 사용 불가 (환불 대기 중인 구매건은 건너뛰고 다음 크레딧 사용)
+6. 관리자가 환불 승인 시:
+   - 해당 구매건의 전체 크레딧만큼 profiles.credits에서 차감
+   - 구매건 상태를 'refunded'로 변경
+7. 관리자가 환불 거부 시:
+   - 구매건 상태를 다시 'active'로 변경
+   - 크레딧 다시 사용 가능
+
+## 현재 데이터베이스 (Auth, profiles, generated_images)
+- profiles 테이블: auth 참조
+- generated_images 테이블: user_id -> profiles.id 참조
+- 중요: 모든 사용자 관련 테이블은 profiles.id를 참조해야 함 (auth.users.id 직접 참조 X)
+
+### 구현이 필요한 데이터베이스
+- profiles 테이블에 credits 컬럼 추가
+- 크레딧 관련 테이블 6개 생성:
+
+1. pricing_plans - 요금제 정보 (공통 테이블, user_id 없음)
+   - name: 요금제명
+   - credits: 크레딧 개수
+   - price: 가격
+   - is_active: 판매 중 여부
+   - sort_order: 정렬 순서
+
+2. credit_sources - 구매건별 잔액 추적 (FIFO용)
+   - user_id -> profiles.id 참조
+   - status: active, pending_refund, refunded
+   - initial_credits: 구매 시 크레딧
+   - remaining_credits: 남은 크레딧
+   - plan_id -> pricing_plans.id 참조
+
+3. credit_consumption - 소비 상세 기록
+   - user_id -> profiles.id 참조
+
+4. credit_transactions - 모든 증감 로그
+   - user_id -> profiles.id 참조
+
+5. payment_history - 결제 내역
+   - user_id -> profiles.id 참조
+
+6. refund_requests - 환불 요청
+   - user_id -> profiles.id 참조
+   - status: pending, approved, rejected
+
+- 모든 사용자 관련 테이블의 user_id는 profiles.id를 참조
+
+### 초기 데이터
+- pricing_plans 테이블에 3개 요금제 추가
+
+모든 API, 페이지, 컴포넌트, 데이터베이스 마이그레이션 파일을 자동으로 생성해줘
+한글 주석과 함께 각 단계별로 설명해줘.
+FIFO 로직과 환불 처리 로직은 특히 상세하게 구현해줘.
+

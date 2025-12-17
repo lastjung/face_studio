@@ -13,6 +13,8 @@ interface AuthContextType {
     openLoginModal: () => void;
     closeLoginModal: () => void;
     user: any | null;
+    credits: number;
+    refreshCredits: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,11 +23,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [user, setUser] = useState<any | null>(null);
+    const [credits, setCredits] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(true);
 
     // Supabase client
     const supabase = createClient();
     const pathname = usePathname();
+
+    const fetchCredits = async (userId: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('credits')
+                .eq('id', userId)
+                .single();
+
+            if (data && !error) {
+                setCredits(data.credits);
+            }
+        } catch (error) {
+            console.error("Error fetching credits:", error);
+        }
+    };
 
     useEffect(() => {
         // Check active session
@@ -35,9 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (session?.user) {
                     setUser(session.user);
                     setIsLoggedIn(true);
+                    await fetchCredits(session.user.id);
                 } else {
                     setUser(null);
                     setIsLoggedIn(false);
+                    setCredits(0);
                 }
             } catch (error) {
                 console.error("Error checking session:", error);
@@ -49,20 +70,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkUser();
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
                 setUser(session.user);
                 setIsLoggedIn(true);
                 setIsLoginModalOpen(false); // Close modal on successful login
+                await fetchCredits(session.user.id);
             } else {
                 setUser(null);
                 setIsLoggedIn(false);
+                setCredits(0);
             }
             setIsLoading(false);
         });
 
         return () => subscription.unsubscribe();
     }, [supabase]);
+
+    const refreshCredits = async () => {
+        if (user) {
+            await fetchCredits(user.id);
+        }
+    };
 
     const login = async (provider: 'google' | 'kakao') => {
         try {
@@ -84,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
         setIsLoggedIn(false);
         setUser(null);
+        setCredits(0);
         window.location.reload(); // Refresh to clear any server-side state
     };
 
@@ -99,7 +129,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isLoginModalOpen,
             openLoginModal,
             closeLoginModal,
-            user
+            user,
+            credits,
+            refreshCredits
         }}>
             {children}
         </AuthContext.Provider>

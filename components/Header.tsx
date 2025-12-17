@@ -5,7 +5,7 @@ import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Header() {
-    const { isLoggedIn, openLoginModal } = useAuth();
+    const { isLoggedIn, openLoginModal, credits } = useAuth();
 
     const handleProtectedLink = (e: React.MouseEvent, href?: string) => {
         console.log("Link clicked. IsLoggedIn:", isLoggedIn);
@@ -36,16 +36,23 @@ export default function Header() {
                     <Link href="/gallery" onClick={(e) => handleProtectedLink(e)} className="text-sm font-medium text-gray-600 hover:text-black">
                         내 갤러리
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-600 hover:text-black">
+                    <Link href="/pricing" onClick={(e) => handleProtectedLink(e)} className="text-sm font-medium text-gray-600 hover:text-black">
                         요금제
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-600 hover:text-black">
+                    <Link href="/credits/history" onClick={(e) => handleProtectedLink(e)} className="text-sm font-medium text-gray-600 hover:text-black">
                         사용내역
                     </Link>
                 </nav>
 
                 {/* Action Button */}
                 <div className="flex items-center gap-4">
+                    {isLoggedIn && (
+                        <div className="hidden items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 md:flex">
+                            <span className="text-lg">🪙</span>
+                            <span className="text-sm font-semibold text-gray-900">{credits?.toLocaleString() ?? 0}</span>
+                        </div>
+                    )}
+
                     {isLoggedIn ? (
                         <div className="flex items-center gap-3">
                             {/* Optional: Show User Avatar or Name if available, for now just Logout or Gallery button */}

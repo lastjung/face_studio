@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import LoginModal from "@/components/LoginModal";
 import Header from "@/components/Header";
+import { Toaster } from "sonner";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -30,6 +31,7 @@ export default function RootLayout({
           <Header />
           {children}
           <LoginModal />
+          <Toaster position="bottom-right" richColors />
         </AuthProvider>
       </body>
     </html>

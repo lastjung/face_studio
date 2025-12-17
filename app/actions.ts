@@ -19,6 +19,120 @@ const SAFETY_SETTINGS = [
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
 ];
 
+// --- Server Actions for Credits ---
+
+import { createAdminClient } from '@/utils/supabase/admin';
+
+export async function purchaseCredit(planId: string) {
+    const supabase = await createClient(); // For Auth Check
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) return { success: false, error: "Unauthorized" };
+
+    try {
+        const adminSupabase = createAdminClient(); // For DB Write (Bypass RLS)
+
+        // 1. Fetch Plan Details (Public is fine, but admin is safer)
+        const { data: plan, error: planError } = await adminSupabase
+            .from('pricing_plans')
+            .select('*')
+            .eq('id', planId)
+            .single();
+
+        if (planError || !plan) throw new Error("Invalid Plan");
+
+        // 2. Add Credit Source (FIFO) - Using Admin Client
+        const { error: sourceError } = await adminSupabase
+            .from('credit_sources')
+            .insert({
+                user_id: user.id,
+                plan_id: plan.id,
+                initial_credits: plan.credits,
+                remaining_credits: plan.credits,
+                status: 'active'
+            });
+
+        if (sourceError) throw new Error(`Failed to create credit source: ${sourceError.message}`);
+
+        // 3. Log Transaction - Using Admin Client
+        const { error: txError } = await adminSupabase
+            .from('credit_transactions')
+            .insert({
+                user_id: user.id,
+                amount: plan.credits,
+                type: 'purchase',
+                description: `Purchased ${plan.name} Plan`
+            });
+
+        if (txError) console.error("Transaction log failed", txError);
+
+        return { success: true };
+
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function requestRefund(sourceId: string, reason: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) return { success: false, error: "Unauthorized" };
+
+    try {
+        // 1. Validate Eligibility
+        const { data: source, error: sourceError } = await supabase
+            .from('credit_sources')
+            .select('*')
+            .eq('id', sourceId)
+            .eq('user_id', user.id)
+            .single();
+
+        if (sourceError || !source) throw new Error("Invalid Credit Source");
+
+        if (source.remaining_credits !== source.initial_credits) {
+            throw new Error("Cannot refund partially used credits.");
+        }
+
+        const purchaseDate = new Date(source.created_at);
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        if (purchaseDate < sevenDaysAgo) {
+            throw new Error("Refund period (7 days) has expired.");
+        }
+
+        if (source.status !== 'active') {
+            throw new Error("Credit source is not active.");
+        }
+
+        // 2. Create Refund Request
+        const { error: refundError } = await supabase
+            .from('refund_requests')
+            .insert({
+                user_id: user.id,
+                source_id: sourceId,
+                reason: reason,
+                status: 'pending'
+            });
+
+        if (refundError) throw new Error("Failed to create refund request.");
+
+        // 3. Update Source Status (Lock credits)
+        const { error: updateError } = await supabase
+            .from('credit_sources')
+            .update({ status: 'pending_refund' })
+            .eq('id', sourceId);
+
+        if (updateError) throw new Error("Failed to update credit source status.");
+
+        return { success: true };
+
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 // --- Types ---
 interface GenerationResult {
     success: boolean;
@@ -27,6 +141,90 @@ interface GenerationResult {
     modelUsed?: string;
     errorLogs?: string[];
     error?: string;
+}
+
+// --- Credit System Logic ---
+
+// FIFO Logic: Deduct credits from oldest active sources first
+async function deductCredits(userId: string, cost: number, dbImageId?: string): Promise<void> {
+    const adminSupabase = createAdminClient();
+
+    // 1. Check Total Balance
+    const { data: profile, error: profileError } = await adminSupabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', userId)
+        .single();
+
+    if (profileError || !profile) throw new Error("Failed to fetch user profile.");
+    if (profile.credits < cost) throw new Error(`Insufficient credits. Required: ${cost}, Available: ${profile.credits}`);
+
+    // 2. Fetch Active Sources (FIFO: Oldest First)
+    const { data: sources, error: sourcesError } = await adminSupabase
+        .from('credit_sources')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gt('remaining_credits', 0)
+        .order('created_at', { ascending: true });
+
+    if (sourcesError || !sources) throw new Error("Failed to fetch credit sources.");
+
+    let remainingCost = cost;
+    const deductionLog = [];
+
+    // 3. FIFO Deduction Loop
+    for (const source of sources) {
+        if (remainingCost <= 0) break;
+
+        const deductAmount = Math.min(source.remaining_credits, remainingCost);
+
+        // Update Source
+        const { error: updateError } = await adminSupabase
+            .from('credit_sources')
+            .update({ remaining_credits: source.remaining_credits - deductAmount })
+            .eq('id', source.id);
+
+        if (updateError) throw new Error(`Failed to update credit source ${source.id}`);
+
+        remainingCost -= deductAmount;
+        deductionLog.push({ source_id: source.id, amount: deductAmount });
+    }
+
+    if (remainingCost > 0) {
+        throw new Error("Critical Error: Calculated credits enough but active sources insufficient.");
+    }
+
+    // 4. Record Transaction (Ledger)
+    const { data: transaction, error: txError } = await adminSupabase
+        .from('credit_transactions')
+        .insert({
+            user_id: userId,
+            amount: -cost,
+            type: 'usage',
+            description: `Image Generation (${cost} credits)`
+        })
+        .select()
+        .single();
+
+    if (txError) console.error("Failed to log transaction:", txError);
+
+    // 5. Record Consumption Details
+    if (transaction) {
+        const consumptionRecords = deductionLog.map(log => ({
+            user_id: userId,
+            source_id: log.source_id,
+            transaction_id: transaction.id,
+            amount_deducted: log.amount,
+            image_id: dbImageId || null
+        }));
+
+        const { error: consError } = await adminSupabase
+            .from('credit_consumption')
+            .insert(consumptionRecords);
+
+        if (consError) console.error("Failed to log consumption details:", consError);
+    }
 }
 
 export async function generateImage(formData: FormData): Promise<GenerationResult> {
@@ -39,6 +237,9 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
     const prompt = formData.get('prompt') as string;
     const imageFile = formData.get('image') as File | null;
     const aspectRatio = formData.get('aspectRatio') as string || "1:1";
+    // TODO: Get cost from formData based on selected model quality (Turbo=1, Standard=2, Pro=3)
+    const COST = 2; // Default Standard Cost
+
     const errorLogs: string[] = [];
 
     if (!prompt) return { success: false, error: 'Prompt is required', errorLogs: [] };
@@ -46,11 +247,26 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
     let faceDescription = "";
     let finalPrompt = prompt;
 
+    // --- Step 0: Check Credits (Fail Fast) ---
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) {
+        return { success: false, error: "Unauthorized: Please log in.", errorLogs: [] };
+    }
+
+    // Quick Balance Check (Optimization)
+    const { data: profile } = await supabase.from('profiles').select('credits').eq('id', user.id).single();
+    if (profile && profile.credits < COST) {
+        return { success: false, error: `Not enough credits. Required: ${COST}, You have: ${profile.credits}`, errorLogs: [] };
+    }
+
+
     try {
         // --- Step 1: Vision Analysis (If image provided) ---
         if (imageFile) {
             try {
-                console.log(`[Phase 1] Analyzing Face with ${VISION_MODEL}...`);
+                // console.log(`[Phase 1] Analyzing Face with ${VISION_MODEL}...`);
                 const arrayBuffer = await imageFile.arrayBuffer();
                 const imageBase64 = Buffer.from(arrayBuffer).toString('base64');
 
@@ -66,8 +282,10 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
                 faceDescription = visionResult.response.text();
                 // Combine User Prompt + Face Description
-                finalPrompt = `High quality, photorealistic image. ${prompt}. \n\nSubject Reference: ${faceDescription}`;
-                console.log("Vision Description:", faceDescription);
+                // Strategy: "A person looking like [Face Description] in the style of [User Prompt]"
+                // This forces the model to generate the specific person first, then apply the costume/style.
+                finalPrompt = `A high quality, photorealistic photo of a person with the following physical features: ${faceDescription}. \n\nThe person is ${prompt}. \n\n(Ensure the face matches the physical description above exactly, rather than using a generic celebrity face).`;
+                // console.log("Vision Description:", faceDescription);
 
             } catch (visionError: any) {
                 console.warn(`Vision analysis failed: ${visionError.message}`);
@@ -79,7 +297,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
         // --- Step 2: Image Generation (Imagen 4.0 via REST) ---
         try {
-            console.log(`[Phase 2] Generating with ${PRIMARY_MODEL} (Ratio: ${aspectRatio})...`);
+            // console.log(`[Phase 2] Generating with ${PRIMARY_MODEL} (Ratio: ${aspectRatio})...`);
 
             const payload = {
                 instances: [
@@ -116,59 +334,69 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
                 // --- Step 3: Supabase Storage & Persistence ---
                 try {
-                    const supabase = await createClient();
-                    const { data: { user }, error: authError } = await supabase.auth.getUser();
+                    // console.log(`[Phase 3] Uploading to Supabase Storage for user ${user.id}...`);
 
-                    if (user && !authError) {
-                        console.log(`[Phase 3] Uploading to Supabase Storage for user ${user.id}...`);
+                    // 1. Convert Base64 -> Buffer
+                    const imageBuffer = Buffer.from(base64Image, 'base64');
 
-                        // 1. Convert Base64 -> Buffer
-                        const imageBuffer = Buffer.from(base64Image, 'base64');
+                    // 2. Upload to Storage
+                    const fileName = `${user.id}/${Date.now()}_${uuidv4()}.png`;
+                    const { error: uploadError } = await supabase.storage
+                        .from('generated_images')
+                        .upload(fileName, imageBuffer, {
+                            contentType: 'image/png',
+                            upsert: false
+                        });
 
-                        // 2. Upload to Storage
-                        const fileName = `${user.id}/${Date.now()}_${uuidv4()}.png`;
-                        const { error: uploadError } = await supabase.storage
+                    let savedImageId = undefined;
+
+                    if (uploadError) {
+                        console.error("Storage Upload Error:", uploadError);
+                        saveError = "Failed to upload image to storage.";
+                    } else {
+                        // 3. Get Public URL
+                        const { data: { publicUrl: storageUrl } } = supabase.storage
                             .from('generated_images')
-                            .upload(fileName, imageBuffer, {
-                                contentType: 'image/png',
-                                upsert: false
-                            });
+                            .getPublicUrl(fileName);
 
-                        if (uploadError) {
-                            console.error("Storage Upload Error:", uploadError);
-                            saveError = "Failed to upload image to storage.";
+                        publicUrl = storageUrl; // Update to real URL
+
+                        // 4. Insert into DB
+                        const { data: insertedImage, error: dbError } = await supabase
+                            .from('images')
+                            .insert({
+                                user_id: user.id,
+                                prompt: prompt, // Original user prompt
+                                model: PRIMARY_MODEL,
+                                storage_path: fileName,
+                                storage_url: storageUrl,
+                                face_description: faceDescription, // Analysis result
+                                final_prompt: finalPrompt // The actual full prompt sent to Imagen
+                            })
+                            .select('id')
+                            .single();
+
+                        if (dbError) {
+                            console.error("DB Insert Error:", dbError);
+                            saveError = "Image saved to storage but failed to record in DB.";
                         } else {
-                            // 3. Get Public URL
-                            const { data: { publicUrl: storageUrl } } = supabase.storage
-                                .from('generated_images')
-                                .getPublicUrl(fileName);
+                            savedImageId = insertedImage.id;
+                            // console.log("Successfully saved image to DB and Storage!");
 
-                            publicUrl = storageUrl; // Update to real URL
-
-                            // 4. Insert into DB
-                            const { error: dbError } = await supabase
-                                .from('images')
-                                .insert({
-                                    user_id: user.id,
-                                    prompt: prompt, // Original user prompt
-                                    model: PRIMARY_MODEL,
-                                    storage_path: fileName,
-                                    storage_url: storageUrl,
-                                    face_description: faceDescription, // Analysis result
-                                    final_prompt: finalPrompt // The actual full prompt sent to Imagen
-                                });
-
-                            if (dbError) {
-                                console.error("DB Insert Error:", dbError);
-                                saveError = "Image saved to storage but failed to record in DB.";
-                            } else {
-                                console.log("Successfully saved image to DB and Storage!");
+                            // --- Step 4: Deduct Credits (FIFO) ---
+                            try {
+                                await deductCredits(user.id, COST, savedImageId);
+                                // console.log(`[Credit] Deducted ${COST} credits for user ${user.id}`);
+                            } catch (creditError: any) {
+                                console.error("Credit Deduction Failed:", creditError);
+                                // Note: Image was generated and saved, but credit deduction failed. 
+                                // In production, we might want to flag this or rollback (delete image).
+                                saveError = `Credit Error: ${creditError.message}`;
                             }
                         }
-                    } else {
-                        console.log("User not logged in. Skipping storage.");
-                        // Optional: Add log if we want to force login
                     }
+
+
                 } catch (storageErr: any) {
                     console.error("Persistence Error:", storageErr);
                     saveError = `Persistence failed: ${storageErr.message}`;
@@ -179,7 +407,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                     success: true,
                     imageUrl: publicUrl,
                     // Show transparency: What the user asked + What the Vision AI added
-                    analysis: `[Used ${PRIMARY_MODEL}]\n\n**Included Face Description:**\n${faceDescription || "(No image reference used)"}\n\n**Final Prompt:**\n${finalPrompt}`,
+                    analysis: `[Used ${PRIMARY_MODEL} - Cost: ${COST} Credits]\n\n**Included Face Description:**\n${faceDescription || "(No image reference used)"}\n\n**Final Prompt:**\n${finalPrompt}`,
                     modelUsed: PRIMARY_MODEL,
                     errorLogs: saveError ? [...errorLogs, saveError] : errorLogs
                 };

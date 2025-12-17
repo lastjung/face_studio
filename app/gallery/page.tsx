@@ -20,11 +20,24 @@ export default function GalleryPage() {
     const [hasMore, setHasMore] = useState(true);
 
     const observerTarget = useRef<HTMLDivElement>(null);
-    const supabase = createClient();
+
+    // createClient Safe Init
+    let supabase: any;
+    try {
+        supabase = createClient();
+    } catch (e) {
+        console.error("Supabase Init Error:", e);
+    }
+    // const supabase = createClient();
 
     // 1. Fetch Real Data from Supabase
     const fetchImages = useCallback(async (isInitial = false) => {
         try {
+            if (!supabase) {
+                console.error("Supabase client not initialized");
+                setLoading(false);
+                return;
+            }
             // Get current user session
             const { data: { session } } = await supabase.auth.getSession();
 
