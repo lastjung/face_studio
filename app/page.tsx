@@ -19,7 +19,6 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 font-sans">
-      <Header />
 
       <main className="flex flex-col items-center pt-10">
         <Hero />

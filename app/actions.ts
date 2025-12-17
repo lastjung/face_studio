@@ -1,6 +1,8 @@
 'use server';
 
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, GenerativeModel } from '@google/generative-ai';
+import { createClient } from '@/utils/supabase/server';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- Configuration ---
 // Strategy: Vision-to-Prompt Bridge (Stable)
@@ -36,15 +38,16 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
     const prompt = formData.get('prompt') as string;
     const imageFile = formData.get('image') as File | null;
+    const aspectRatio = formData.get('aspectRatio') as string || "1:1";
     const errorLogs: string[] = [];
 
     if (!prompt) return { success: false, error: 'Prompt is required', errorLogs: [] };
 
+    let faceDescription = "";
+    let finalPrompt = prompt;
+
     try {
         // --- Step 1: Vision Analysis (If image provided) ---
-        let faceDescription = "";
-        let finalPrompt = prompt;
-
         if (imageFile) {
             try {
                 console.log(`[Phase 1] Analyzing Face with ${VISION_MODEL}...`);
@@ -76,7 +79,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
         // --- Step 2: Image Generation (Imagen 4.0 via REST) ---
         try {
-            console.log(`[Phase 2] Generating with ${PRIMARY_MODEL}...`);
+            console.log(`[Phase 2] Generating with ${PRIMARY_MODEL} (Ratio: ${aspectRatio})...`);
 
             const payload = {
                 instances: [
@@ -84,7 +87,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                 ],
                 parameters: {
                     sampleCount: 1,
-                    aspectRatio: "1:1",
+                    aspectRatio: aspectRatio,
                     personGeneration: "allow_adult",
                 }
             };
@@ -100,22 +103,91 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`REST API Error ${response.status}: ${errorText}`);
+                console.error(`Imagen API Error (${response.status}):`, errorText);
+                throw new Error(`Google API Error ${response.status}: ${errorText || response.statusText}`);
             }
 
             const data = await response.json();
 
             if (data.predictions && data.predictions.length > 0 && data.predictions[0].bytesBase64Encoded) {
+                const base64Image = data.predictions[0].bytesBase64Encoded;
+                let publicUrl = `data:image/png;base64,${base64Image}`; // Default fallback
+                let saveError = null;
+
+                // --- Step 3: Supabase Storage & Persistence ---
+                try {
+                    const supabase = await createClient();
+                    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+                    if (user && !authError) {
+                        console.log(`[Phase 3] Uploading to Supabase Storage for user ${user.id}...`);
+
+                        // 1. Convert Base64 -> Buffer
+                        const imageBuffer = Buffer.from(base64Image, 'base64');
+
+                        // 2. Upload to Storage
+                        const fileName = `${user.id}/${Date.now()}_${uuidv4()}.png`;
+                        const { error: uploadError } = await supabase.storage
+                            .from('generated_images')
+                            .upload(fileName, imageBuffer, {
+                                contentType: 'image/png',
+                                upsert: false
+                            });
+
+                        if (uploadError) {
+                            console.error("Storage Upload Error:", uploadError);
+                            saveError = "Failed to upload image to storage.";
+                        } else {
+                            // 3. Get Public URL
+                            const { data: { publicUrl: storageUrl } } = supabase.storage
+                                .from('generated_images')
+                                .getPublicUrl(fileName);
+
+                            publicUrl = storageUrl; // Update to real URL
+
+                            // 4. Insert into DB
+                            const { error: dbError } = await supabase
+                                .from('images')
+                                .insert({
+                                    user_id: user.id,
+                                    prompt: prompt, // Original user prompt
+                                    model: PRIMARY_MODEL,
+                                    storage_path: fileName,
+                                    storage_url: storageUrl,
+                                    face_description: faceDescription, // Analysis result
+                                    final_prompt: finalPrompt // The actual full prompt sent to Imagen
+                                });
+
+                            if (dbError) {
+                                console.error("DB Insert Error:", dbError);
+                                saveError = "Image saved to storage but failed to record in DB.";
+                            } else {
+                                console.log("Successfully saved image to DB and Storage!");
+                            }
+                        }
+                    } else {
+                        console.log("User not logged in. Skipping storage.");
+                        // Optional: Add log if we want to force login
+                    }
+                } catch (storageErr: any) {
+                    console.error("Persistence Error:", storageErr);
+                    saveError = `Persistence failed: ${storageErr.message}`;
+                    errorLogs.push(saveError);
+                }
+
                 return {
                     success: true,
-                    imageUrl: `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`,
+                    imageUrl: publicUrl,
                     // Show transparency: What the user asked + What the Vision AI added
-                    analysis: `[Used ${PRIMARY_MODEL}]\n\n**Included Face Description:**\n${faceDescription || "(No image reference used)"}`,
+                    analysis: `[Used ${PRIMARY_MODEL}]\n\n**Included Face Description:**\n${faceDescription || "(No image reference used)"}\n\n**Final Prompt:**\n${finalPrompt}`,
                     modelUsed: PRIMARY_MODEL,
-                    errorLogs
+                    errorLogs: saveError ? [...errorLogs, saveError] : errorLogs
                 };
             } else {
-                throw new Error("No image data found in REST response.");
+                console.error("Gemini/Imagen API Raw Response:", JSON.stringify(data, null, 2));
+                // Try to extract a meaningful error message if possible
+                const failureReason = data.error?.message || JSON.stringify(data).substring(0, 200);
+                throw new Error(`Generation failed by model. Details: ${failureReason}`);
             }
 
         } catch (genError: any) {

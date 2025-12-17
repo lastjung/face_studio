@@ -1,114 +1,87 @@
-# Face Studio - AI Image Generator
+# Face Studio - AI Image Generator 🎨
 
-> 🚧 **Work in Progress**: This application is currently under active development.
+> **"Turn yourself into anyone, anywhere."**
 
+Face Studio is a premium AI portrait generation web application built with **Next.js 14** and **Google Gemini/Imagen**. 
+It features a sophisticated "Vision-to-Prompt" pipeline that allows users to create high-quality, face-consistent images in various styles without needing complex LoRA training.
 
-**Reference Video:** [AI로 웹서비스를 개발하는 전체 과정 (랜딩페이지부터 배포·DB·결제까지)](https://www.youtube.com/watch?v=fxi3G8kw87s)
+![Face Studio UI](./public/face_studio_demo.jpg)
 
-Face Studio is a premium AI portrait generation application built with Next.js and Google Gemini API. It features a robust "Nano Banana" style consistent character generation mode.
+## ✨ Key Features
 
-![Face Studio UI](/Users/eric/.gemini/antigravity/brain/2061e830-8fbc-4c8d-af17-e0fdbf9ec9e7/final_face_studio_page_1765850056218.png)
+- **🎭 AI Character Generation**: Uses **Google Imagen 4.0** (or 3.0) for state-of-the-art image synthesis.
+- **👁️ Face Consistency**: Leverages **Gemini Vision (2.5-Flash)** to analyze your uploaded photo and generate a detailed description, ensuring the new image looks like you.
+- **🔐 Cloud Gallery**: 
+    - **Supabase Auth**: Secure Google & Kakao login.
+    - **Cloud Storage**: Automatic global hosting of your creations.
+    - **Your Database**: All prompts and metadata are saved to your private gallery.
+- **📱 Responsive Design**: A beautifully crafted UI that works on Mobile and Desktop, featuring "Glassmorphism" aesthetics.
+- **♿ Accessibility Ready**: Built-in support for High Contrast and Screen Readers, with an architecture ready for AI Audio Descriptions.
 
-## Features
+## 🛠️ Tech Stack
 
-- **AI Image Generation**: Powered by `imagen-4.0-generate-001` (Generation) and `gemini-2.5-flash` (Vision).
-- **Nano Banana Mode**: Strict face consistency prompting for maintaining character identity across styles.
-- **Dynamic UI**: Clear distinction between Image results and Text Analysis results.
-- **Sample Gallery**: Browse and try styles from curated samples.
+- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS, Lucide Icons
+- **AI Core**: Google Generative AI SDK (`@google/generative-ai`)
+- **Backend & Auth**: Supabase (PostgreSQL, Auth, Storage)
+- **Deployment**: Vercel (Recommended)
 
-## Getting Started
+## 🚀 fast Start
 
-1.  Clone the repository.
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Set up your `.env.local`:
-    ```env
-    GEMINI_API_KEY=your_key_here
-    ```
-4.  Run the development server:
-    ```bash
-    npm run dev
-    ```
-5.  Open [http://localhost:3000](http://localhost:3000).
-
-## Technologies
-- Next.js 14 (App Router)
-- Tailwind CSS via PostCSS
-- Google Generative AI SDK (`@google/generative-ai`)
-- Lucide React Icons
-
-## 🚀 Verified & Available Models (2025-12-16)
-
-### ✅ Currently Active Configuration
-- **Primary (Image Generation)**: `imagen-4.0-generate-001` (REST API)
-  - Capable of high-fidelity, photorealistic generation.
-  - Supports "Nano Banana" style face consistency prompting.
-- **Fallback (Text/Analysis)**: `gemini-2.5-flash` (SDK)
-  - Used for deep text analysis or when image generation is not required.
-
-### 📋 Available Models (For Future Use)
-The following models were confirmed available in your account:
-- **Image Generation (Imagen 4 Series)**
-  - `imagen-4.0-ultra-generate-001` (Higher quality, slower)
-  - `imagen-4.0-fast-generate-001` (Faster, optimized for speed)
-  - `imagen-4.0-generate-preview-06-06`
-- **Video Generation (Veo Series)**
-  - `veo-2.0-generate-001`
-  - `veo-3.0-generate-001` & `veo-3.0-fast-generate-001`
-- **Research & Experimental**
-  - `deep-research-pro-preview-12-2025`
-  - `gemini-2.0-flash-exp`
-
-> **Note**: To switch models, edit the `PRIMARY_MODEL` constant in `app/actions.ts`.
-
-
-## 🧠 Model Characteristics & Architecture (Why this setup?)
-
-Understanding the models is key to using Face Studio effectively:
-
-### 1. The Challenge (Direct Multimodal)
-- **Imagen 3/4** (`generate-001`): Powerful **Text-to-Image** models. They *cannot* "see" images directly via the public API (returns 400 Error if you send an image).
-- **Gemini 2.5** (`preview-image`): Powerful **Vision** models. They can "see" images and describe them perfectly, but they *cannot* "draw" images (returns Text-only or 400 MIME Error).
-
-### 2. The Solution: "Vision-to-Prompt Bridge" 🌉
-Face Studio uses a smart 2-step pipeline to achieve "Face Consistency" without a trusted tester account:
-1.  **Vision Phase**: `gemini-2.5-flash` analyzes your uploaded photo and extracts critical details (e.g., "Young woman, oval face, green eyes, wavy brown hair...").
-2.  **Generation Phase**: These details are combined with your style prompt (e.g., "Cyberpunk warrior") and sent to `imagen-4.0-generate-001` as a highly detailed *text instruction*.
-3.  **Result**: The image generator draws a person matching your description in the requested style.
-
-### 3. Pricing & Quotas
-- **Free Tier (AI Studio)**: If you use an API key from Google AI Studio, usage is often free but rate-limited.
-- **Pay-as-you-go (Vertex)**: Standard rates apply (~$0.03-$0.06/image). Check your [Google Cloud Billing Console](https://console.cloud.google.com/billing).
-
-## � Features & Commands
-
-### 🔍 Check Available Models
-Want to see which models your API key can access? Run this command in your terminal:
+### 1. Clone & Install
 ```bash
-npm run check-models
-```
-This will print a list of all active models (like `imagen-4.0-generate-001`, `veo-2.0`, etc.) available to your account.
-
-## �🚀 How to Enable "Nano Banana Pro" (High-Quality Mode)
-To use the professional-grade models (higher resolution, better coherence), update the configuration in `app/actions.ts`:
-
-1.  Open `app/actions.ts`.
-2.  Locate the model optimization section.
-3.  Change the `PRIMARY_MODEL` constant:
-
-```typescript
-// For Pro-level Image Generation (if available in your plan)
-const PRIMARY_MODEL = "imagen-3.0-generate-001"; // or "gemini-1.5-pro"
+git clone https://github.com/your-username/face-studio.git
+cd face-studio
+npm install
 ```
 
-*Note: Pro models may have different rate limits or pricing tiers.*
+### 2. Environment Setup
+Create a `.env.local` file in the root directory:
 
-## 📊 Model Comparison Reference
+```env
+# Google AI Studio (Get key at aistudio.google.com)
+GEMINI_API_KEY=your_gemini_api_key
 
-| 모델명 (ID) | 역할 (비유) | 입력 능력 | 출력 능력 | 현재 상태 |
-| :--- | :--- | :--- | :--- | :--- |
-| `gemini-2.5-flash-preview-image` | 👁️ 눈 (Vision) | 텍스트 + 이미지 | 텍스트 | 사용 가능 (단, 그림은 못 그림) |
-| `gemini-2.0-flash-exp` | 🧠 뇌 (All-in-One) | 텍스트 + 이미지 | 텍스트 + 이미지 | 사용 가능 (단, 이미지 생성 기능 제한됨) |
-| `imagen-3.0` / `4.0` | 🎨 손 (Painter) | 텍스트 (+일부 이미지) | 고품질 이미지 | ❌ 사용 불가 (권한 없음) |
+# Supabase (Get details at supabase.com)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+```
+
+### 3. Database Setup (Supabase)
+Run the SQL scripts located in `supabase/` to set up your project:
+- `supabase_schema.sql`: Sets up Auth, Profiles, and Image tables.
+- `03_add_face_description.sql`: Adds advanced columns for prompt tracking.
+
+### 4. Run Locally
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## 🤖 AI Model Architecture
+
+Face Studio uses a **Dual-Model Strategy** to overcome common API limitations:
+
+1.  **Vision Phase (`gemini-2.5-flash`)**: 
+    -   *Input*: User Photo + Prompt
+    -   *Action*: Analyzes the user's face (eye color, hair style, ethnicity, age, bone structure).
+    -   *Output*: A dense text description (Face Description).
+
+2.  **Generation Phase (`imagen-4.0-generate-001`)**:
+    -   *Input*: Style Prompt + Face Description
+    -   *Action*: Generates a high-fidelity image merging the style and the person's description.
+    -   *Output*: Final consistent character image.
+
+## 💾 Storage & Persistence
+
+- **Images**: Stored in Supabase Storage bucket `generated_images`.
+- **Metadata**: Stored in `public.images` table, including:
+    -   Public URL
+    -   Original Prompt
+    -   Face Description (Vision Analysis)
+    -   Final Prompt (Actual instruction sent to AI)
+
+## 👤 Author
+Developed with ❤️ by **Face Studio Team**
+
+## 📄 License
+MIT License

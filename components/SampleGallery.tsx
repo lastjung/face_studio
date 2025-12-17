@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { clsx } from 'clsx';
+import { useAuth } from '@/context/AuthContext';
 
 type Category = 'woman' | 'man' | 'baby';
 
@@ -56,8 +57,17 @@ const SAMPLE_DATA = {
 };
 
 export default function SampleGallery({ onSelectPrompt }: SampleGalleryProps) {
+    const { isLoggedIn, openLoginModal } = useAuth();
     const [activeTab, setActiveTab] = useState<Category>('woman');
     const activeData = SAMPLE_DATA[activeTab];
+
+    const handlePromptClick = (prompt: string) => {
+        if (!isLoggedIn) {
+            openLoginModal();
+            return;
+        }
+        onSelectPrompt(prompt);
+    };
 
     return (
         <section className="mt-20 flex w-full max-w-6xl flex-col items-center px-4">
@@ -129,7 +139,7 @@ export default function SampleGallery({ onSelectPrompt }: SampleGalleryProps) {
                         {activeData.examples.map((item) => (
                             <div
                                 key={item.id}
-                                onClick={() => onSelectPrompt(item.prompt)}
+                                onClick={() => handlePromptClick(item.prompt)}
                                 className="group relative cursor-pointer overflow-hidden rounded-xl bg-gray-100 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md"
                             >
                                 <div className="absolute top-2 w-full text-center opacity-0 transition-opacity group-hover:opacity-100 z-10">

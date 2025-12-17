@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
+import LoginModal from "@/components/LoginModal";
+import Header from "@/components/Header";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -23,7 +26,11 @@ export default function RootLayout({
         className={`${outfit.variable} antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <AuthProvider>
+          <Header />
+          {children}
+          <LoginModal />
+        </AuthProvider>
       </body>
     </html>
   );

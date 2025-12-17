@@ -1,7 +1,22 @@
+"use client";
+
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Header() {
+    const { isLoggedIn, openLoginModal } = useAuth();
+
+    const handleProtectedLink = (e: React.MouseEvent, href?: string) => {
+        console.log("Link clicked. IsLoggedIn:", isLoggedIn);
+        if (!isLoggedIn) {
+            e.preventDefault();
+            console.log("Opening Login Modal...");
+            openLoginModal();
+        }
+        // If logged in, let default Link behavior happen (or button onClick)
+    };
+
     return (
         <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md">
             <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
@@ -15,10 +30,10 @@ export default function Header() {
 
                 {/* Navigation */}
                 <nav className="hidden items-center gap-8 md:flex">
-                    <Link href="#" className="text-sm font-medium text-gray-600 hover:text-black">
+                    <Link href="/" onClick={(e) => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-sm font-medium text-gray-600 hover:text-black">
                         이미지 생성
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-600 hover:text-black">
+                    <Link href="/gallery" onClick={(e) => handleProtectedLink(e)} className="text-sm font-medium text-gray-600 hover:text-black">
                         내 갤러리
                     </Link>
                     <Link href="#" className="text-sm font-medium text-gray-600 hover:text-black">
@@ -31,9 +46,24 @@ export default function Header() {
 
                 {/* Action Button */}
                 <div className="flex items-center gap-4">
-                    <button className="rounded-full bg-black px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800">
-                        시작하기
-                    </button>
+                    {isLoggedIn ? (
+                        <div className="flex items-center gap-3">
+                            {/* Optional: Show User Avatar or Name if available, for now just Logout or Gallery button */}
+                            <Link
+                                href="/gallery"
+                                className="rounded-full bg-gray-100 px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200"
+                            >
+                                내 갤러리
+                            </Link>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => openLoginModal()}
+                            className="rounded-full bg-black px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+                        >
+                            로그인 / 시작하기
+                        </button>
+                    )}
                 </div>
             </div>
         </header>
