@@ -50,7 +50,7 @@ export async function processRefund(requestId: string, action: 'approve' | 'reje
             // Note: Credits are removed from profile automatically by Trigger when status changes.
             await adminSupabase.from('credit_transactions').insert({
                 user_id: request.user_id,
-                amount: request.credit_sources.remaining_credits, // Log the amount that was refunded (cancelled)
+                amount: -request.credit_sources.remaining_credits, // Log the amount that was refunded (cancelled)
                 type: 'refund',
                 description: `Refund Approved (Source: ${request.credit_sources.plan_id})`
             });
@@ -85,7 +85,7 @@ export async function processRefund(requestId: string, action: 'approve' | 'reje
 
 // --- Pricing Plan Actions ---
 
-export async function updatePlan(id: string, data: { name: string, price: number, credits: number, sort_order: number }) {
+export async function updatePlan(id: string, data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };
@@ -109,7 +109,7 @@ export async function updatePlan(id: string, data: { name: string, price: number
     }
 }
 
-export async function createPlan(data: { name: string, price: number, credits: number, sort_order: number }) {
+export async function deletePlan(id: string) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };
@@ -121,7 +121,31 @@ export async function createPlan(data: { name: string, price: number, credits: n
     try {
         const { error } = await adminSupabase
             .from('pricing_plans')
-            .insert({ ...data, is_active: true });
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        revalidatePath('/admin/plans');
+        revalidatePath('/pricing');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+export async function createPlan(data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean }) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const adminSupabase = createAdminClient();
+    const { data: profile } = await adminSupabase.from('profiles').select('role').eq('id', user.id).single();
+    if (profile?.role !== 'Admin') return { success: false, error: "Forbidden" };
+
+    try {
+        const { error } = await adminSupabase
+            .from('pricing_plans')
+            .insert({ ...data, is_active: data.is_active ?? true });
 
         if (error) throw error;
         revalidatePath('/admin/plans');

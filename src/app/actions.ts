@@ -512,6 +512,20 @@ export async function confirmTossPayment(orderId: string, paymentKey: string, am
             description: `Purchased ${plan.name} (${data.method})`
         });
 
+        // 2.4 Log Payment History (Fix for Missing Data)
+        const { error: paymentError } = await adminSupabase.from('payment_history').insert({
+            user_id: user.id,
+            amount: amount,
+            currency: 'KRW',
+            status: 'succeeded',
+            provider: 'toss', // or data.method if specific
+        });
+
+        if (paymentError) {
+            console.error("Payment History Log Failed:", paymentError);
+            // Non-critical, but good to know
+        }
+
         return { success: true };
 
     } catch (error: any) {

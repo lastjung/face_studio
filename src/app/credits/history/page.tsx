@@ -184,7 +184,7 @@ export default function HistoryPage() {
                                                     <h3 className="font-bold text-gray-900">{source.pricing_plans?.name || 'Unknown Plan'}</h3>
                                                     {source.status === 'active' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">사용 가능</span>}
                                                     {source.status === 'pending_refund' && <span className="bg-yellow-100 text-yellow-700 text-[10px] px-2 py-0.5 rounded-full font-bold">환불 대기</span>}
-                                                    {source.status === 'refunded' && <span className="bg-gray-100 text-gray-500 text-[10px] px-2 py-0.5 rounded-full font-bold">환불 완료</span>}
+                                                    {source.status === 'refunded' && <span className="bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded-full font-bold">환불 완료</span>}
                                                     {source.status === 'exhausted' && <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-bold">소진됨</span>}
                                                 </div>
                                                 <div className="text-right">

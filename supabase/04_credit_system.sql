@@ -16,6 +16,7 @@ create table if not exists public.pricing_plans (
     name text not null unique, -- 중복 방지를 위해 unique 추가
     credits integer not null, -- 제공 크레딧
     price integer not null, -- 가격 (KRW)
+    description text, -- 요금제 설명
     is_active boolean default true, -- 판매 중 여부
     sort_order integer default 0, -- 정렬 순서
     created_at timestamptz default now()

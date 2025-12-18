@@ -32,6 +32,8 @@ export default function GalleryPage() {
 
     // 1. Fetch Real Data from Supabase
     const fetchImages = useCallback(async (isInitial = false) => {
+        if (loading && !isInitial) return; // Prevent concurrent fetches
+
         try {
             if (!supabase) {
                 console.error("Supabase client not initialized");
@@ -70,7 +72,7 @@ export default function GalleryPage() {
 
                 if (isInitial) {
                     setImages(newImages);
-                    setVisibleImages(newImages); // For now, let's keep it simple: images = visibleImages
+                    setVisibleImages(newImages);
                 } else {
                     setImages(prev => [...prev, ...newImages]);
                     setVisibleImages(prev => [...prev, ...newImages]);
@@ -80,13 +82,18 @@ export default function GalleryPage() {
                 if (count !== null && (from + newImages.length) >= count) {
                     setHasMore(false);
                 }
+            } else {
+                // No data returned
+                if (isInitial) setImages([]);
+                setHasMore(false);
             }
         } catch (error) {
             console.error("Error fetching images:", error);
+            setHasMore(false); // Stop infinite retries on error
         } finally {
             setLoading(false);
         }
-    }, [images.length, supabase]);
+    }, [images.length, supabase, loading]);
 
     // Initial Load
     useEffect(() => {

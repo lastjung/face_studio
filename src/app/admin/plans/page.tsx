@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/utils/supabase/admin';
-import PlanTable from './PlanTable';
+import PlanManager from './PlanManager';
 
 export default async function AdminPlansPage() {
     const supabase = createAdminClient();
@@ -20,7 +20,7 @@ export default async function AdminPlansPage() {
                 <span className="text-sm text-gray-500">총 {plans?.length ?? 0}개</span>
             </div>
 
-            <PlanTable initialPlans={plans || []} />
+            <PlanManager initialPlans={plans || []} />
         </div>
     );
 }
