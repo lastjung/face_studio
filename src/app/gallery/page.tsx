@@ -88,7 +88,15 @@ export default function GalleryPage() {
                 setHasMore(false);
             }
         } catch (error) {
-            console.error("Error fetching images:", error);
+            console.error("Error fetching images RAW:", error);
+            if (error && typeof error === 'object') {
+                console.error("Error details:", {
+                    message: (error as any).message,
+                    details: (error as any).details,
+                    hint: (error as any).hint,
+                    code: (error as any).code
+                });
+            }
             setHasMore(false); // Stop infinite retries on error
         } finally {
             setLoading(false);

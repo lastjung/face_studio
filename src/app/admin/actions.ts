@@ -85,7 +85,7 @@ export async function processRefund(requestId: string, action: 'approve' | 'reje
 
 // --- Pricing Plan Actions ---
 
-export async function updatePlan(id: string, data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean }) {
+export async function updatePlan(id: string, data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean, discounted_price?: number | null, discount_percentage?: number | null }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };
@@ -133,7 +133,7 @@ export async function deletePlan(id: string) {
     }
 }
 
-export async function createPlan(data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean }) {
+export async function createPlan(data: { name: string, price: number, credits: number, sort_order: number, description?: string, is_active?: boolean, discounted_price?: number | null, discount_percentage?: number | null }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };

@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import LoginModal from "@/components/LoginModal";
 import Header from "@/components/Header";
+import ActivityLogger from "@/components/ActivityLogger";
+
 import { Toaster } from "sonner";
 
 const outfit = Outfit({
@@ -28,6 +30,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AuthProvider>
+          <ActivityLogger />
           <Header />
           {children}
           <LoginModal />

@@ -3,6 +3,8 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, GenerativeModel } from '@google/generative-ai';
 import { createClient } from '@/utils/supabase/server';
 import { v4 as uuidv4 } from 'uuid';
+import { headers } from 'next/headers';
+import { encrypt } from '@/utils/encryption'; // Import Encryption
 
 // --- Configuration ---
 // Strategy: Vision-to-Prompt Bridge (Stable)
@@ -531,5 +533,146 @@ export async function confirmTossPayment(orderId: string, paymentKey: string, am
     } catch (error: any) {
         console.error("Confirm Payment Error:", error);
         return { success: false, error: error.message };
+    }
+}
+// --- User Management ---
+
+export async function withdrawUser() {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) return { success: false, error: "Unauthorized" };
+
+    try {
+        // 1. Soft Delete Profile
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+        if (updateError) throw new Error(`Failed to update profile: ${updateError.message}`);
+
+        // 2. Sign Out
+        await supabase.auth.signOut();
+
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Withdrawal Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// --- Activity Logging ---
+
+export async function logActivity(
+    actionType: 'LOGIN' | 'LOGOUT' | 'PAGE_VISIT',
+    path?: string
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return; // Only log for authenticated users
+
+    try {
+        // Collect Metadata
+        const headersList = await headers();
+        const ip = headersList.get('x-forwarded-for') || 'unknown';
+        const userAgent = headersList.get('user-agent') || 'unknown';
+
+        // Encrypt Sensitive Data
+        // IP Address is Personal Identifiable Information (PII)
+        const encryptedIp = encrypt(ip);
+
+        const { error } = await supabase.from('activity_logs').insert({
+            user_id: user.id,
+            action_type: actionType,
+            path: path || null,
+            ip_address: encryptedIp, // Store Encrypted
+            user_agent: userAgent
+        });
+
+        if (error) {
+            console.error("Activity Log Error:", error);
+        }
+    } catch (err) {
+        // Fail silently to not disrupt user experience
+        console.error("Failed to log activity:", err);
+    }
+}
+
+// --- Profile & Encryption Management ---
+
+export async function ensureUserProfile() {
+    const supabase = await createClient(); // Auth Verification
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) {
+        console.error("ensureUserProfile: No authenticated user found.");
+        return;
+    }
+
+    const adminSupabase = createAdminClient(); // Bypass RLS for Profile Sync
+
+    try {
+        // 1. Check if profile exists
+        const { data: profile, error: fetchError } = await adminSupabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', user.id)
+            .single();
+
+        if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "Row not found" error
+            console.error("ensureUserProfile fetch error:", fetchError);
+        }
+
+        // 2. Prepare Data from Auth Metadata
+        const metaName = user.user_metadata.full_name || user.email?.split('@')[0] || 'Unknown';
+        const metaEmail = user.email || '';
+        const metaAvatar = user.user_metadata.avatar_url || '';
+
+        // 3. Encrypt Data
+        // console.log(`[Encryption] Encrypting for ${user.id} (${metaEmail})`);
+
+        const encryptedEmail = metaEmail ? encrypt(metaEmail) : null;
+        const encryptedName = encrypt(metaName);
+
+        if (!profile) {
+            console.log(`[Profile] Creating new encrypted profile for ${user.id}`);
+            // INSERT
+            const { error: insertError } = await adminSupabase
+                .from('profiles')
+                .insert({
+                    id: user.id,
+                    email: encryptedEmail, // Encrypted
+                    full_name: encryptedName, // Encrypted
+                    username: metaEmail.split('@')[0],
+                    avatar_url: metaAvatar,
+                    role: 'User'
+                });
+
+            if (insertError) console.error("Failed to create profile:", insertError);
+
+        } else {
+            // UPDATE / MIGRATION
+            // Force update to ensure encryption is applied
+            const { error: updateError } = await adminSupabase
+                .from('profiles')
+                .update({
+                    email: encryptedEmail,
+                    full_name: encryptedName,
+                    // Synching avatar too if needed, but let's stick to encryption targets
+                })
+                .eq('id', user.id);
+
+            if (updateError) {
+                console.error("Failed to update/encrypt profile:", updateError);
+            } else {
+                // console.log("[Profile] Successfully encrypted profile data.");
+            }
+        }
+
+    } catch (error) {
+        console.error("ensureUserProfile Error:", error);
     }
 }

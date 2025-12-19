@@ -4,10 +4,14 @@ import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+import { Settings } from 'lucide-react';
+import SettingsModal from './SettingsModal';
 
 export default function Header() {
     const { isLoggedIn, openLoginModal, credits } = useAuth();
     const pathname = usePathname();
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     if (pathname?.startsWith('/admin')) return null;
 
@@ -59,7 +63,13 @@ export default function Header() {
 
                     {isLoggedIn ? (
                         <div className="flex items-center gap-3">
-                            {/* Optional: Show User Avatar or Name if available, for now just Logout or Gallery button */}
+                            <button
+                                onClick={() => setIsSettingsOpen(true)}
+                                className="rounded-full bg-gray-100 p-2 text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
+                                aria-label="Settings"
+                            >
+                                <Settings size={20} />
+                            </button>
                             <Link
                                 href="/gallery"
                                 className="rounded-full bg-gray-100 px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200"
@@ -77,6 +87,8 @@ export default function Header() {
                     )}
                 </div>
             </div>
-        </header>
+
+            <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        </header >
     );
 }

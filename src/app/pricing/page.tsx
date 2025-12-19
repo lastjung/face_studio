@@ -14,6 +14,7 @@ interface PricingPlan {
     credits: number;
     price: number;
     description?: string;
+    discounted_price?: number;
 }
 
 export default function PricingPage() {
@@ -128,11 +129,29 @@ export default function PricingPage() {
                                     )}
 
                                     <div className="mb-6">
-                                        <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
-                                        <div className="mt-4 flex items-baseline text-gray-900">
-                                            <span className="text-4xl font-bold tracking-tight">
-                                                ₩{plan.price.toLocaleString()}
-                                            </span>
+                                        <div className="flex justify-between items-start">
+                                            <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
+                                            {plan.discounted_price && plan.discounted_price < plan.price && (
+                                                <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">
+                                                    {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-4 flex flex-col items-baseline text-gray-900">
+                                            {plan.discounted_price && plan.discounted_price < plan.price ? (
+                                                <>
+                                                    <span className="text-base text-gray-400 line-through">
+                                                        ₩{plan.price.toLocaleString()}
+                                                    </span>
+                                                    <span className="text-4xl font-bold tracking-tight text-red-600">
+                                                        ₩{plan.discounted_price.toLocaleString()}
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                <span className="text-4xl font-bold tracking-tight">
+                                                    ₩{plan.price.toLocaleString()}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-2 text-sm text-gray-500">
                                             {plan.credits} 크레딧 제공
@@ -142,7 +161,7 @@ export default function PricingPage() {
                                     <ul className="mb-8 space-y-3 text-sm leading-6 text-gray-600">
                                         <li className="flex gap-x-3">
                                             <Check className="h-6 w-5 flex-none text-black" aria-hidden="true" />
-                                            크레딧당 약 ₩{Math.round(plan.price / plan.credits).toLocaleString()}원
+                                            크레딧당 약 ₩{Math.round((plan.discounted_price || plan.price) / plan.credits).toLocaleString()}원
                                         </li>
                                         <li className="flex gap-x-3">
                                             <Check className="h-6 w-5 flex-none text-black" aria-hidden="true" />

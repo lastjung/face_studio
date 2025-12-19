@@ -3,6 +3,9 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { usePathname } from 'next/navigation';
+import { logActivity, ensureUserProfile } from '@/app/actions';
+
+// ... imports
 
 interface AuthContextType {
     isLoggedIn: boolean;
@@ -49,11 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         let mounted = true;
 
-        // One-time session check on mount + set up listener
         const initializeAuth = async () => {
-            // 1. Set up listener FIRST to catch any state changes immediately
-            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
                 if (!mounted) return;
+
+                console.log(`Auth Event: ${event}`);
+
+                if (event === 'SIGNED_IN' && session?.user) {
+                    logActivity('LOGIN');
+                    ensureUserProfile(); // Create/Encrypt Profile
+                } else if (event === 'SIGNED_OUT') {
+                    logActivity('LOGOUT');
+                }
 
                 if (session?.user) {
                     console.log("AuthContext: Auth State Changed -> Logged In");
@@ -69,6 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 setIsLoading(false);
             });
+
+            // ... rest of logic
 
             // 2. Perform initial getSession primarily to handle cases where onAuthStateChange doesn't fire immediately (edge case)
             // But honestly, onAuthStateChange is reliable.
@@ -125,10 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const logout = async () => {
         await supabase.auth.signOut();
-        setIsLoggedIn(false);
-        setUser(null);
-        setCredits(0);
-        window.location.reload();
+        // Force refresh to clear any cached state/context
+        window.location.href = '/';
     };
 
     const openLoginModal = () => setIsLoginModalOpen(true);

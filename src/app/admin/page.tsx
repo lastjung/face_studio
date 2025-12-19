@@ -1,8 +1,11 @@
 import { createAdminClient } from '@/utils/supabase/admin';
+import { decrypt } from '@/utils/encryption';
 // StatCard component is defined at the bottom of this file
 
 import { Users, CreditCard, Activity, ArrowUpRight, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
+
+export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboard() {
     const supabase = createAdminClient();
@@ -17,7 +20,7 @@ export default async function AdminDashboard() {
     const totalCreditsUsed = creditSources?.reduce((sum, c) => sum + (c.initial_credits - c.remaining_credits), 0) || 0;
 
     // Recent Activity (Credit Transactions)
-    const { data: recentTxs } = await supabase
+    const { data: rawRecentTxs } = await supabase
         .from('credit_transactions')
         .select(`
             id,
@@ -29,8 +32,29 @@ export default async function AdminDashboard() {
         `)
         .order('created_at', { ascending: false })
         .limit(5);
-    // const totalCreditsRemaining = creditStats?.reduce((acc, curr) => acc + curr.remaining_credits, 0) || 0;
-    // const totalCreditsUsed = totalCreditsIssued - totalCreditsRemaining;
+
+    // Decrypt Recent Transactions
+    const recentTxs = (rawRecentTxs || []).map((tx: any) => {
+        const profile = tx.profiles || {};
+        let fullName = profile.full_name || 'Unknown';
+        let email = profile.email || '-';
+
+        try {
+            if (fullName) fullName = decrypt(fullName);
+        } catch (e) { /* Ignore */ }
+
+        try {
+            if (email && (email.includes(':') || email.length > 50)) email = decrypt(email);
+        } catch (e) { /* Ignore */ }
+
+        return {
+            ...tx,
+            profiles: {
+                full_name: fullName,
+                email: email
+            }
+        };
+    });
 
     return (
         <div className="space-y-8">

@@ -14,6 +14,8 @@ interface Plan {
     description?: string;
     sort_order: number;
     is_active: boolean;
+    discounted_price?: number | null;
+    discount_percentage?: number | null;
     created_at: string;
 }
 
@@ -30,7 +32,9 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
         credits: 0,
         description: '',
         sort_order: 0,
-        is_active: true
+        is_active: true,
+        discounted_price: 0,
+        discount_percentage: 0
     });
 
     const openCreateModal = () => {
@@ -41,7 +45,9 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
             credits: 0,
             description: '',
             sort_order: initialPlans.length + 1,
-            is_active: true
+            is_active: true,
+            discounted_price: 0,
+            discount_percentage: 0
         });
         setIsModalOpen(true);
     };
@@ -54,7 +60,9 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
             credits: plan.credits,
             description: plan.description || '',
             sort_order: plan.sort_order,
-            is_active: plan.is_active
+            is_active: plan.is_active,
+            discounted_price: plan.discounted_price || 0,
+            discount_percentage: plan.discount_percentage || 0
         });
         setIsModalOpen(true);
     };
@@ -88,7 +96,9 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
                 credits: Number(formData.credits),
                 description: formData.description,
                 sort_order: Number(formData.sort_order),
-                is_active: formData.is_active
+                is_active: formData.is_active,
+                discounted_price: formData.discounted_price > 0 ? Number(formData.discounted_price) : null,
+                discount_percentage: formData.discounted_price > 0 ? Number(formData.discount_percentage) : null
             };
 
             let result;
@@ -140,18 +150,38 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
                             <h3 className="text-xl font-bold text-gray-900 mb-1">{plan.name}</h3>
                             <p className="text-sm text-gray-500 mb-6 min-h-[40px]">{plan.description || '설명 없음'}</p>
 
-                            <div className="space-y-2 mb-6 text-sm">
-                                <div className="flex justify-between text-gray-600">
-                                    <span>크레딧</span>
-                                    <span className="font-bold text-gray-900">{plan.credits}</span>
+                            <div className="space-y-3 mb-6 text-sm">
+                                <div className="flex justify-between items-center text-gray-600">
+                                    <span className="font-medium">크레딧</span>
+                                    <span className="font-bold text-gray-900 text-base">{plan.credits}</span>
                                 </div>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>가격</span>
-                                    <span className="font-bold text-gray-900">₩{plan.price.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>크레딧당</span>
-                                    <span className="text-gray-400">₩{Math.round(plan.price / plan.credits).toLocaleString()}</span>
+                                {plan.discounted_price && plan.discounted_price < plan.price ? (
+                                    <>
+                                        <div className="flex justify-between items-center text-gray-400">
+                                            <span className="font-medium">정가</span>
+                                            <span className="line-through">₩{plan.price.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-gray-600">
+                                            <span className="font-medium">할인가</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-[#FF5A5A] text-base">₩{plan.discounted_price.toLocaleString()}</span>
+                                                <span className="bg-[#FFF0F0] text-[#FF5A5A] text-[10px] px-1.5 py-0.5 font-bold rounded">
+                                                    {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex justify-between items-center text-gray-600">
+                                        <span className="font-medium">가격</span>
+                                        <span className="font-bold text-gray-900 text-base">₩{plan.price.toLocaleString()}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-gray-400 pt-1">
+                                    <span className="text-xs">크레딧당</span>
+                                    <span className="text-sm font-medium">
+                                        ₩{Math.round((plan.discounted_price || plan.price) / plan.credits).toLocaleString()}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -211,6 +241,41 @@ export default function PlanManager({ initialPlans }: { initialPlans: Plan[] }) 
                                         value={formData.price}
                                         onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
                                         className="w-full border-gray-200 rounded-lg text-sm focus:ring-green-500 focus:border-green-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">할인가 (원)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.discounted_price || ''}
+                                        onChange={(e) => {
+                                            const discounted = e.target.value ? Number(e.target.value) : 0;
+                                            const original = formData.price;
+                                            let percentage = 0;
+                                            if (original > 0 && discounted > 0) {
+                                                percentage = Math.round(((original - discounted) / original) * 100);
+                                            }
+                                            setFormData({
+                                                ...formData,
+                                                discounted_price: discounted || 0,
+                                                discount_percentage: percentage
+                                            });
+                                        }}
+                                        placeholder="선택 사항"
+                                        className="w-full border-gray-200 rounded-lg text-sm focus:ring-green-500 focus:border-green-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">할인율 (%)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.discount_percentage || ''}
+                                        readOnly
+                                        className="w-full border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                        placeholder="자동 계산"
                                     />
                                 </div>
                             </div>

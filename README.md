@@ -2,6 +2,8 @@
 
 > **"Turn yourself into anyone, anywhere."**
 
+Created with reference to: https://www.youtube.com/watch?v=fxi3G8kw87s
+
 Face Studio is a premium AI portrait generation web application built with **Next.js 14** and **Google Gemini/Imagen**. 
 It features a sophisticated "Vision-to-Prompt" pipeline that allows users to create high-quality, face-consistent images in various styles.
 

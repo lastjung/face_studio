@@ -14,7 +14,7 @@ const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "";
 export default function PaymentPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const { user, loading: authLoading, openLoginModal } = useAuth();
+    const { user, isLoading: authLoading, openLoginModal } = useAuth();
 
     // Plan Info
     const planId = searchParams.get('planId');
@@ -77,7 +77,7 @@ export default function PaymentPage() {
                 // Render Payment Methods
                 const paymentMethodsWidget = await paymentWidget.renderPaymentMethods(
                     "#payment-widget",
-                    { value: plan.price },
+                    { value: plan.discounted_price || plan.price },
                     { variantKey: "DEFAULT" } // Use default UI
                 );
                 paymentMethodsWidgetRef.current = paymentMethodsWidget;
@@ -153,7 +153,7 @@ export default function PaymentPage() {
                             <div className="border-t pt-4 mt-4">
                                 <div className="flex justify-between items-center text-lg font-bold">
                                     <span>총 결제금액</span>
-                                    <span className="text-blue-600">₩{plan.price.toLocaleString()}</span>
+                                    <span className="text-blue-600">₩{(plan.discounted_price || plan.price).toLocaleString()}</span>
                                 </div>
                             </div>
 
