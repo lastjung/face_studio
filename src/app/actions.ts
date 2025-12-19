@@ -139,6 +139,7 @@ export async function requestRefund(sourceId: string, reason: string) {
 interface GenerationResult {
     success: boolean;
     imageUrl?: string | null;
+    imageUrls?: string[]; // Array support for multiple images
     analysis?: string;
     modelUsed?: string;
     errorLogs?: string[];
@@ -238,6 +239,7 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
     const prompt = formData.get('prompt') as string;
     const imageFile = formData.get('image') as File | null;
+    const style = formData.get('style') as string || '사실적';
     const aspectRatio = formData.get('aspectRatio') as string || "1:1";
     // TODO: Get cost from formData based on selected model quality (Turbo=1, Standard=2, Pro=3)
     const COST = 2; // Default Standard Cost
@@ -265,17 +267,77 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
 
     try {
+        // --- PREPARE EXTENDED SETTINGS ---
+        const framing = formData.get('framing') as string || "전신";
+        let negativePrompt = formData.get('negativePrompt') as string || "";
+        const imageCount = parseInt(formData.get('imageCount') as string || "1");
+
+        // --- PREPARE FRAMING & STYLE ---
+        let framingKeywords = "";
+
+        // Dynamic Negative Prompt Injection (CRITICAL for Framing Control)
+        switch (framing) {
+            case '얼굴 위주':
+                // 1. Face (Close-up): Intimate portrait, detailed features, 1m distance.
+                framingKeywords = "Close-up face shot, face filling the frame, highly detailed eyes and skin texture, intimate portrait";
+                negativePrompt += ", full body, wide shot, far away, standing, legs, shoes, torso, waist, neck only, bust shot, shoulders visible";
+                break;
+            case '가슴 위':
+                // 2. Bust (Head & Shoulders): Medium close-up, ensuring chest/shoulders are visible to prevent 'floating head'.
+                framingKeywords = "Medium close-up, Bust shot, Head and Chest visible, chest and shoulders fully visible, passport photo composition";
+                negativePrompt += ", full body, legs, shoes, waist, hips, extreme close-up, macro, chin only, face only, text, watermark, close up face only";
+                break;
+            case '상반신':
+                // 3. Waist Up (Mid-Shot): Belt-line crop. Strong anti-text prompts to prevent 'stats/UI' artifacts.
+                framingKeywords = "Mid-shot, Waist Up portrait, belt line visible, hands visible, clean background, high quality photo";
+                negativePrompt += ", full body, legs, shoes, knees, hips, extreme close-up, head shot, face shot, character sheet, stats, text, writing, ui, interface, infobox, typography, letters";
+                break;
+            case '무릎 위':
+                // 4. Knee Up (American Shot): 3/4 length, thighs and knees visible, natural standing pose.
+                framingKeywords = "American shot, Cowboy shot, View from knees up, thighs visible, knees visible, standing natural pose, 3/4 length portrait";
+                negativePrompt += ", full body, shoes, feet, extreme close-up, head shot, face shot, bust shot, waist up only, close up";
+                break;
+            case '전신':
+            default:
+                // 5. Full Body (Wide Shot): Head-to-toe. 'Small subject' forced to prevent cropping in 1:1 aspect ratio.
+                framingKeywords = "Wide shot, Full body photograph, entire figure visible from head to toe, subject small in frame, lots of headroom and footroom, shoes visible";
+                negativePrompt += ", close up, face shot, bust shot, cropped, zoomed in, head only, portrait, extreme close-up, waist up, knee up, illustration, anime, 3d render, painting, cropped legs, cropped feet";
+                break;
+        }
+
+        let styleKeywords = "";
+        switch (style) {
+            case '사실적':
+                styleKeywords = "8k resolution, raw photo, dslr, 85mm lens, depth of field, bokeh, soft lighting, neutral lighting, white balance, high detail, film grain, Fujifilm XT3, photorealistic";
+                negativePrompt += ", anime, illustration, 3d render, vector art, painting, drawing, cartoon, semi-realistic, cgi";
+                break;
+            case '일러스트':
+                styleKeywords = "digital illustration, concept art, trending on artstation, very detailed, smooth, vibrant colors, clean lines, fantasy art style";
+                break;
+            case '애니메이션':
+                styleKeywords = "anime style, japanese animation, makoto shinkai style, studio ghibli, vibrant, 2d, cel shading, detailed backgrounds";
+                break;
+            case '수채화':
+                styleKeywords = "watercolor painting, wet on wet, soft blending, artistic, dreamy, pastel colors, paper texture, traditional media";
+                break;
+            case '유화':
+                styleKeywords = "oil painting, thick brush strokes, canvas texture, impressionism, fine art, traditional art, rich colors";
+                break;
+            default:
+                styleKeywords = "high quality, photorealistic";
+        }
+
         // --- Step 1: Vision Analysis (If image provided) ---
         if (imageFile) {
             try {
-                // console.log(`[Phase 1] Analyzing Face with ${VISION_MODEL}...`);
+                // ... (Vision Logic) ...
                 const arrayBuffer = await imageFile.arrayBuffer();
                 const imageBase64 = Buffer.from(arrayBuffer).toString('base64');
 
                 const genAI = new GoogleGenerativeAI(apiKey);
                 const visionModel = genAI.getGenerativeModel({ model: VISION_MODEL });
 
-                const analysisPrompt = "Analyze this face in extreme detail for the purpose of reproducing it in a new photo. Describe the ENTIRE facial structure, EXACT skin tone (e.g., 'pale ivory', 'fair with pink undertones', 'tan olive'), specific eye shape/color, nose shape, and lip shape. Mention any distinctive features (moles, scars). Do NOT describe clothing or background. Output ONLY the physical description.";
+                const analysisPrompt = "Analyze the physical identity of this face to reproduce the resemblance. Describe age, gender, facial structure, eye shape, nose shape, and key features. Do NOT describe skin texture or tiny details that require a close-up.";
 
                 const visionResult = await visionModel.generateContent([
                     analysisPrompt,
@@ -283,36 +345,65 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                 ]);
 
                 faceDescription = visionResult.response.text();
-                // Combine User Prompt + Face Description
-                // Strategy: "A person looking like [Face Description] in the style of [User Prompt]"
-                // This forces the model to generate the specific person first, then apply the costume/style.
-                const realismKeywords = "8k resolution, raw photo, dslr, 85mm lens, depth of field, bokeh, soft lighting, neutral lighting, white balance, high detail, film grain, Fujifilm XT3";
 
-                // New Prompt Structure: Framing + Context -> Identity -> Style
-                // We move 'prompt' (context) to the front so the model establishes the scene/clothing first.
-                // CHANGED: "Medium-full shot" -> "Full body shot" to force dress visibility.
-                // CHANGED: Added "elegant abstract background" to remove text.
-                finalPrompt = `Full body shot (showing entire dress from head to toe) of ${prompt}. \n\nThe subject has the following physical features: ${faceDescription}. \n\nEnvironment: Elegant abstract luxury event background, cinematic lighting, no text, no signage. \n\nStyle used: ${realismKeywords}. \n\n(CRITICAL: The face shape must not be distorted or widened. Keep the subject's skin tone EXACTLY as described. Do NOT add warm filters or tanning. Ensure the dress/outfit is COMPLETELY VISIBLE).`;
-                // console.log("Vision Description:", faceDescription);
+                // Aggressive Prompt Engineering for Framing Control
+                let faceInstruction = `The subject has: ${faceDescription}`;
+
+                if (framing !== '얼굴 위주') {
+                    faceInstruction = `(The subject is shown in a wider shot. Do not zoom in, but ensure facial features are consistent with this description): ${faceDescription} \n(Ensure the age and physical traits match this description, overriding generic archetype traits from the prompt if they differ.)`;
+                }
+
+                let masterSuffix = "";
+                if (framing === '전신') masterSuffix = " - ZOOM OUT - WHOLE FIGURE VISIBLE";
+                if (framing === '무릎 위') masterSuffix = " - MEDIUM LONG SHOT - KNEES UP VISIBLE";
+                if (framing === '상반신') masterSuffix = " - ZOOM OUT - WAIST UP VISIBLE (DO NOT CROP TO HEAD)";
+                if (framing === '가슴 위') masterSuffix = " - BUST SHOT - SHOULDERS VISIBLE";
+                if (framing === '얼굴 위주') masterSuffix = " - EXTREME CLOSE UP - FACE ONLY";
+
+                finalPrompt = `
+[MASTER INSTRUCTION: ${framingKeywords.toUpperCase()}${masterSuffix}]
+
+[SCENE CONTENT]
+${prompt}
+
+[CHARACTER DETAILS - FACE REFERENCE ONLY]
+${faceInstruction}
+
+[STYLE]
+${styleKeywords}
+
+[COMPOSITION CHECK]
+Ensure the image matches the MASTER INSTRUCTION.
+If 'Full Body', show SHOES and HEAD.
+If 'Upper Body', show WAIST UP.
+Do not let the face explanation dictate the framing.
+`;
 
             } catch (visionError: any) {
                 console.warn(`Vision analysis failed: ${visionError.message}`);
                 errorLogs.push(`Vision Analysis Failed: ${visionError.message}`);
+                finalPrompt = `${prompt}, ${styleKeywords}`;
             }
         } else {
-            finalPrompt = `High quality, photorealistic image of ${prompt}`;
+            // Text Only Mode
+            finalPrompt = `[MASTER INSTRUCTION: ${framingKeywords}]\n${prompt}\n[STYLE summary]: ${styleKeywords}`;
         }
 
         // --- Step 2: Image Generation (Imagen 4.0 via REST) ---
         try {
-            // console.log(`[Phase 2] Generating with ${PRIMARY_MODEL} (Ratio: ${aspectRatio})...`);
+
+            // Append Negative Prompts to the main prompt cleanly
+            if (negativePrompt.trim()) {
+                const cleanedNegative = negativePrompt.replace(/^,\s*/, ''); // Remove leading comma
+                finalPrompt += ` \n\nExclude elements: ${cleanedNegative}`;
+            }
 
             const payload = {
                 instances: [
                     { prompt: finalPrompt }
                 ],
                 parameters: {
-                    sampleCount: 1,
+                    sampleCount: imageCount,
                     aspectRatio: aspectRatio,
                     personGeneration: "allow_adult",
                 }
@@ -329,13 +420,14 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`Imagen API Error (${response.status}):`, errorText);
+                // console.error(`Imagen API Error (${response.status}):`, errorText);
                 throw new Error(`Google API Error ${response.status}: ${errorText || response.statusText}`);
             }
 
             const data = await response.json();
 
             if (data.predictions && data.predictions.length > 0 && data.predictions[0].bytesBase64Encoded) {
+
                 const base64Image = data.predictions[0].bytesBase64Encoded;
                 let publicUrl = `data:image/png;base64,${base64Image}`; // Default fallback
                 let saveError = null;
@@ -421,7 +513,12 @@ export async function generateImage(formData: FormData): Promise<GenerationResul
                 };
             } else {
                 console.error("Gemini/Imagen API Raw Response:", JSON.stringify(data, null, 2));
-                // Try to extract a meaningful error message if possible
+
+                // Handle Safety Filter / Empty Response (Common when prompt violates guidelines slightly)
+                if (!data || Object.keys(data).length === 0 || !data.predictions) {
+                    throw new Error("이미지를 생성할 수 없습니다. (안전 필터 또는 프롬프트 문제). 다른 스타일이나 프롬프트로 시도해 주세요.");
+                }
+
                 const failureReason = data.error?.message || JSON.stringify(data).substring(0, 200);
                 throw new Error(`Generation failed by model. Details: ${failureReason}`);
             }
@@ -675,4 +772,54 @@ export async function ensureUserProfile() {
     } catch (error) {
         console.error("ensureUserProfile Error:", error);
     }
+}
+
+// --- Image Management ---
+
+export async function deleteImage(imageId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (!user || authError) return { success: false, error: "Unauthorized" };
+
+    // 1. Fetch Image to get Storage URL (and verify ownership)
+    const { data: image, error: fetchError } = await supabase
+        .from('images')
+        .select('*')
+        .eq('id', imageId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (fetchError || !image) return { success: false, error: "Image not found or access denied" };
+
+    try {
+        // 2. Delete from Storage (Best Effort)
+        // Extract path from Public URL: .../generated_images/USER_ID/FILENAME.png
+        const storageUrl = image.storage_url;
+        if (storageUrl && storageUrl.includes("generated_images/")) {
+            const path = storageUrl.split("generated_images/")[1];
+            if (path) {
+                // Decode URI component just in case
+                const decodedPath = decodeURIComponent(path);
+                const { error: storageError } = await supabase.storage
+                    .from('generated_images')
+                    .remove([decodedPath]);
+
+                if (storageError) console.error("Storage delete error:", storageError);
+            }
+        }
+    } catch (storageErr) {
+        console.error("Storage delete failed (non-critical):", storageErr);
+    }
+
+    // 3. Delete from Database
+    const { error: deleteError } = await supabase
+        .from('images')
+        .delete()
+        .eq('id', imageId)
+        .eq('user_id', user.id);
+
+    if (deleteError) return { success: false, error: deleteError.message };
+
+    return { success: true };
 }

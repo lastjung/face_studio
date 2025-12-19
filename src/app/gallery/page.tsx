@@ -7,6 +7,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { X } from "lucide-react";
+import { deleteImage } from "@/app/actions";
 
 const PAGE_SIZE = 20;
 
@@ -15,7 +16,7 @@ export default function GalleryPage() {
     const [images, setImages] = useState<GalleryImage[]>([]);
     const [visibleImages, setVisibleImages] = useState<GalleryImage[]>([]);
     const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
-    const [page, setPage] = useState(1);
+    const [_page, _setPage] = useState(1); // Unused but kept for structure
     const [loading, setLoading] = useState(true);
     const [hasMore, setHasMore] = useState(true);
 
@@ -28,7 +29,6 @@ export default function GalleryPage() {
     } catch (e) {
         console.error("Supabase Init Error:", e);
     }
-    // const supabase = createClient();
 
     // 1. Fetch Real Data from Supabase
     const fetchImages = useCallback(async (isInitial = false) => {
@@ -89,14 +89,6 @@ export default function GalleryPage() {
             }
         } catch (error) {
             console.error("Error fetching images RAW:", error);
-            if (error && typeof error === 'object') {
-                console.error("Error details:", {
-                    message: (error as any).message,
-                    details: (error as any).details,
-                    hint: (error as any).hint,
-                    code: (error as any).code
-                });
-            }
             setHasMore(false); // Stop infinite retries on error
         } finally {
             setLoading(false);
@@ -112,8 +104,7 @@ export default function GalleryPage() {
             setImages([]);
             setVisibleImages([]);
         }
-    }, [isLoggedIn]); // Only depend on auth state change (and fetchImages inside if needed, but safer to just trigger on login)
-
+    }, [isLoggedIn]); // Only depend on auth state change
 
     // 2. Infinite Scroll Logic
     const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -134,6 +125,24 @@ export default function GalleryPage() {
 
         return () => observer.disconnect();
     }, [handleObserver]);
+
+    // 3. Delete Logic
+    const handleDeleteImage = useCallback(async (imageId: string) => {
+        if (!confirm("정말 이 이미지를 삭제하시겠습니까? (복구할 수 없습니다)")) return;
+
+        try {
+            const result = await deleteImage(imageId);
+            if (result.success) {
+                setImages(prev => prev.filter(img => img.id !== imageId));
+                setVisibleImages(prev => prev.filter(img => img.id !== imageId));
+            } else {
+                alert("삭제 실패: " + result.error);
+            }
+        } catch (e) {
+            console.error("Delete Error:", e);
+            alert("삭제 중 오류가 발생했습니다.");
+        }
+    }, []);
 
     return (
         <main className="min-h-screen pt-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
@@ -167,22 +176,32 @@ export default function GalleryPage() {
                 </div>
             ) : (
                 <>
-                    {/* Grid */}
-                    <GalleryGrid
-                        images={visibleImages}
-                        onImageClick={(img) => setSelectedImage(img)}
-                    />
-
-                    {/* Infinite Scroll Sentinel */}
-                    {hasMore && (
-                        <div
-                            ref={observerTarget}
-                            className="h-20 flex items-center justify-center text-gray-400"
-                        >
-                            {loading && (
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
-                            )}
+                    {/* Initial Loading State */}
+                    {loading && images.length === 0 ? (
+                        <div className="flex justify-center items-center py-40">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white"></div>
                         </div>
+                    ) : (
+                        <>
+                            {/* Grid */}
+                            <GalleryGrid
+                                images={visibleImages}
+                                onImageClick={(img) => setSelectedImage(img)}
+                                onDelete={handleDeleteImage}
+                            />
+
+                            {/* Infinite Scroll Sentinel */}
+                            {hasMore && (
+                                <div
+                                    ref={observerTarget}
+                                    className="h-20 flex items-center justify-center text-gray-400"
+                                >
+                                    {loading && (
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             )}

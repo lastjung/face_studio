@@ -7,9 +7,10 @@ import { type GalleryImage } from "./ImageModal";
 interface GalleryGridProps {
     images: GalleryImage[];
     onImageClick: (image: GalleryImage) => void;
+    onDelete?: (imageId: string) => void;
 }
 
-export default function GalleryGrid({ images, onImageClick }: GalleryGridProps) {
+export default function GalleryGrid({ images, onImageClick, onDelete }: GalleryGridProps) {
     if (images.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -38,16 +39,13 @@ export default function GalleryGrid({ images, onImageClick }: GalleryGridProps) 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
 
-                    {/* Top Right Icons (Visible on Hover / Always visible on touch?) 
-             - In mobile, hover is tricky, usually tap opens. But requirement says "Hover".
-             - We will make them visible on group-hover.
-          */}
+                    {/* Top Right Icons */}
                     <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
                             className="p-2 bg-white/90 dark:bg-black/60 rounded-full text-gray-700 dark:text-white hover:text-blue-500 hover:scale-110 transition-all shadow-sm"
                             onClick={(e) => {
                                 e.stopPropagation(); // Don't trigger modal
-                                // TODO: Implement Download
+                                // TODO: Implement Download properly later
                                 console.log("Download", image.id);
                             }}
                         >
@@ -57,8 +55,7 @@ export default function GalleryGrid({ images, onImageClick }: GalleryGridProps) 
                             className="p-2 bg-white/90 dark:bg-black/60 rounded-full text-gray-700 dark:text-white hover:text-red-500 hover:scale-110 transition-all shadow-sm"
                             onClick={(e) => {
                                 e.stopPropagation(); // Don't trigger modal
-                                // TODO: Implement Delete
-                                console.log("Delete", image.id);
+                                if (onDelete) onDelete(image.id);
                             }}
                         >
                             <Trash2 size={16} />

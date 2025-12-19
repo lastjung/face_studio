@@ -2,6 +2,8 @@
 
 > **"Turn yourself into anyone, anywhere."**
 
+> Built using **Gemini 3.0 Pro** and **Antigravity** 🚀
+
 Created with reference to: https://www.youtube.com/watch?v=fxi3G8kw87s
 
 Face Studio is a premium AI portrait generation web application built with **Next.js 14** and **Google Gemini/Imagen**. 
@@ -12,7 +14,9 @@ It features a sophisticated "Vision-to-Prompt" pipeline that allows users to cre
 ## ✨ Key Features
 
 - **🎭 AI Character Generation**: Uses **Google Imagen 4.0** for state-of-the-art image synthesis.
-- **👁️ Face Consistency**: Leverages **Gemini Vision (2.5-Flash)** to analyze your uploaded photo and generate a detailed description, ensuring the new image looks like you.
+- **� 5-Tier Framing Control (V6)**: Advanced dynamic framing system (Face, Bust, Waist, Knee, Full Body) with anti-crop logic.
+- **🛡️ Enhanced Safety**: Sanitized prompt engineering to bypass false-positive safety filters while maintaining quality.
+- **�👁️ Face Consistency**: Leverages **Gemini Vision (2.5-Flash)** to analyze your uploaded photo and generate a detailed description.
 - **💰 Credit System**: 
     - Full **Purchase & Refund** flow.
     - **FIFO (First-In-First-Out)** credit deduction logic.
@@ -53,6 +57,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 # Supabase Service Role (REQUIRED for Credit System & Admin Ops)
 # WARNING: Keep this secret! Never expose to client.
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Encryption Key (REQUIRED for User Privacy)
+# Generate a 32-byte hex string (e.g. openssl rand -hex 32)
+ENCRYPTION_KEY=your_32_byte_hex_key
+
+# Toss Payments (For Test Environment)
+NEXT_PUBLIC_TOSS_CLIENT_KEY=test_gck_...
+TOSS_SECRET_KEY=test_gsk_...
 ```
 
 ### 3. Database Setup (Supabase)
@@ -61,6 +73,8 @@ Run the SQL scripts located in `supabase/` in the following order:
 2. `02_images_and_storage.sql`: Creates Images table and Storage Buckets.
 3. `03_add_face_description.sql`: Adds columns for AI analysis.
 4. `04_credit_system.sql`: **Crucial** - Sets up Credit Tables, RLS Policies, and Ledger.
+5. `05_recent_features.sql`: Soft Delete & Activity Logging.
+6. `06_fix_deletion_constraint.sql`: Fixes image deletion FK constraints.
 
 ### 4. Run Locally
 ```bash

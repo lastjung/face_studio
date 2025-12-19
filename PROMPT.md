@@ -439,5 +439,50 @@ Supabase 현재 데이터베이스 직접 살펴보고 나서 구현 시작해
 
 *   기존에 가입된 평문 데이터가 있다면, 이를 일괄 암호화하는 스크립트(`scripts/encrypt_all_profiles.ts`)를 통해 마이그레이션 수행
 
+# [6] Framing (Shot Type) Keywords
+Used in `Guide: Combo Box 1` (Framing Selector)
+
+## 1. 얼굴 위주 (Face Close-up)
+- **Positive**: `Close-up face shot, face filling the frame, highly detailed eyes and skin texture, intimate portrait`
+- **Negative (Auto-added)**: `full body, wide shot, far away, standing, legs, shoes, torso, waist, neck only, bust shot, shoulders visible`
+
+## 2. 가슴 위 (Bust)
+- **Positive**: `Medium close-up, Bust shot, Head and Chest visible, chest and shoulders fully visible, passport photo composition`
+- **Negative (Auto-added)**: `full body, legs, shoes, waist, hips, extreme close-up, macro, chin only, face only, text, watermark, close up face only`
+
+## 3. 상반신 (Waist Up)
+- **Positive**: `Mid-shot, Waist Up portrait, belt line visible, hands visible, clean background, high quality photo`
+- **Negative (Auto-added)**: `full body, legs, shoes, knees, hips, extreme close-up, head shot, face shot, character sheet, stats, text, writing, ui, interface, infobox, typography, letters`
+
+## 4. 무릎 위 (Knee Up)
+- **Positive**: `American shot, Cowboy shot, View from knees up, thighs visible, knees visible, standing natural pose, 3/4 length portrait`
+- **Negative (Auto-added)**: `full body, shoes, feet, extreme close-up, head shot, face shot, bust shot, waist up only, close up`
+
+## 5. 전신 (Full Body)
+- **Positive**: `Wide shot, Full body photograph, entire figure visible from head to toe, subject small in frame, lots of headroom and footroom, shoes visible`
+- **Negative (Auto-added)**: `close up, face shot, bust shot, cropped, zoomed in, head only, portrait, extreme close-up, waist up, knee up, illustration, anime, 3d render, painting, cropped legs, cropped feet`
+
+# [7] Style Keywords & Credit Logic
+Used in `Guide: Combo Box 2` (Style Selector + Cost Display)
+
+## 1. 사실적 (Realistic)
+- **Prompt**: `8k resolution, raw photo, dslr, 85mm lens, depth of field, bokeh, soft lighting, neutral lighting, white balance, high detail, film grain, Fujifilm XT3, photorealistic`
+
+## 2. 일러스트 (Illustration)
+- **Prompt**: `digital illustration, concept art, trending on artstation, very detailed, smooth, vibrant colors, clean lines, fantasy art style`
+
+## 3. 애니메이션 (Animation)
+- **Prompt**: `anime style, japanese animation, makoto shinkai style, studio ghibli, vibrant, 2d, cel shading, detailed backgrounds`
+
+## 4. 수채화 (Watercolor)
+- **Prompt**: `watercolor painting, wet on wet, soft blending, artistic, dreamy, pastel colors, paper texture, traditional media`
+
+## 5. 유화 (Oil Painting)
+- **Prompt**: `oil painting, thick brush strokes, canvas texture, impressionism, fine art, traditional art, rich colors`
+
+## Cost Logic (비용)
+- **Base Cost**: 2 Credits per image.
+- **Formula**: `2 * Image Count` (e.g., 4 images = 8 credits).
+
 
 

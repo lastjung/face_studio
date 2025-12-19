@@ -22,7 +22,14 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
     const [modelUsed, setModelUsed] = useState<string | null>(null);
     const [errorLogs, setErrorLogs] = useState<string[]>([]);
     const [analysis, setAnalysis] = useState<string | null>(null);
+    const [style, setStyle] = useState("사실적");
     const [aspectRatio, setAspectRatio] = useState("1:1");
+    const [framing, setFraming] = useState("전신"); // New State
+    // Advanced Settings
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [negativePrompt, setNegativePrompt] = useState("");
+    const [imageCount, setImageCount] = useState(1);
+    const [generatedImages, setGeneratedImages] = useState<string[]>([]); // New Array State
 
     const handleAuthCheck = (e?: React.MouseEvent | React.TouchEvent) => {
         if (!isLoggedIn) {
@@ -38,13 +45,19 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
         const file = e.target.files?.[0];
         if (file) {
             setSelectedFile(file);
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setSelectedImage(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setSelectedImage(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                setSelectedImage(null);
+            }
         }
     };
+
+
 
     const handleGenerate = async () => {
         if (!handleAuthCheck()) return;
@@ -52,6 +65,7 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
         if (!prompt) return;
         setIsGenerating(true);
         setGeneratedImage(null);
+        setGeneratedImages([]); // Clear array
         setAnalysis(null);
         setModelUsed(null);
         setErrorLogs([]);
@@ -60,6 +74,12 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
             const formData = new FormData();
             formData.append('prompt', prompt);
             formData.append('aspectRatio', aspectRatio);
+            formData.append('style', style);
+            formData.append('framing', framing); // Send Framing
+            // Advanced
+            formData.append('negativePrompt', negativePrompt);
+            formData.append('imageCount', imageCount.toString());
+
             if (selectedFile) {
                 formData.append('image', selectedFile);
             }
@@ -67,10 +87,18 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
             const result = await generateImage(formData);
 
             if (result.success) {
-                if (result.imageUrl) setGeneratedImage(result.imageUrl);
+                // Update State based on Result
+                if (result.imageUrls && result.imageUrls.length > 0) {
+                    setGeneratedImages(result.imageUrls);
+                    setGeneratedImage(result.imageUrls[0]); // Fallback
+                } else if (result.imageUrl) {
+                    setGeneratedImages([result.imageUrl]);
+                    setGeneratedImage(result.imageUrl);
+                }
+
                 if (result.analysis) setAnalysis(result.analysis);
                 if (result.modelUsed) setModelUsed(result.modelUsed);
-                if (result.errorLogs) setErrorLogs(result.errorLogs);
+                if (result.errorLogs) setErrorLogs(result.errorLogs); // Append if partial failures
             } else {
                 console.error("Generation failed:", result.error);
                 if (result.errorLogs) setErrorLogs(result.errorLogs);
@@ -91,12 +119,24 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
                 <div className="relative mb-6 flex flex-col gap-4 sm:flex-row">
                     <div className="relative flex-grow flex flex-col gap-2">
                         {/* Uploaded Image Preview (Immediately above prompt input) */}
-                        {selectedImage && (
-                            <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-gray-200">
-                                <img src={selectedImage} alt="Uploaded" className="h-full w-full object-cover" />
+                        {/* Uploaded Image/File Preview */}
+                        {(selectedImage || selectedFile) && (
+                            <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center">
+                                {selectedFile?.type === 'application/pdf' ? (
+                                    <div className="flex flex-col items-center justify-center text-gray-500">
+                                        <span className="text-xs font-bold">PDF</span>
+                                        <span className="text-[10px]">{selectedFile.name.slice(0, 8)}...</span>
+                                    </div>
+                                ) : (
+                                    selectedImage && <img src={selectedImage} alt="Uploaded" className="h-full w-full object-cover" />
+                                )}
                                 <button
-                                    onClick={() => setSelectedImage(null)}
-                                    className="absolute top-0 right-0 bg-black/50 p-1 text-white hover:bg-black/70"
+                                    onClick={() => {
+                                        setSelectedImage(null);
+                                        setSelectedFile(null);
+                                        if (fileInputRef.current) fileInputRef.current.value = '';
+                                    }}
+                                    className="absolute top-0 right-0 bg-black/50 p-1 text-white hover:bg-black/70 rounded-bl-lg"
                                 >
                                     <X className="h-3 w-3" />
                                 </button>
@@ -108,7 +148,7 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
                                 type="text"
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
-                                disabled={!isLoggedIn} // Disable input if not logged in to enforce click->modal
+                                disabled={!isLoggedIn}
                                 placeholder="변신하고 싶은 모습을 묘사해주세요 (예: 사이버펑크 스타일의 미래 전사)"
                                 className="w-full rounded-xl border border-gray-300 bg-gray-50 py-4 pl-6 pr-14 text-lg outline-none transition-all focus:border-black focus:ring-1 focus:ring-black disabled:bg-white disabled:cursor-pointer"
                             />
@@ -118,7 +158,7 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
                             type="file"
                             ref={fileInputRef}
                             className="hidden"
-                            accept="image/*"
+                            accept="image/*,application/pdf"
                             onChange={handleFileChange}
                         />
                         <button
@@ -149,29 +189,20 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
 
                 {/* Options Bar */}
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    {/* Model Selector */}
-                    <div className="relative" onClick={handleAuthCheck}>
-                        <select
-                            disabled={!isLoggedIn}
-                            className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-gray-700 outline-none hover:border-gray-400 focus:border-black disabled:cursor-pointer disabled:bg-white"
-                        >
-                            <option>Realism v5.0</option>
-                            <option>DreamShaper</option>
-                            <option>Anime V6</option>
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    </div>
 
-                    {/* Style Selector */}
+                    {/* Style Selector (Merged Model+Style) */}
                     <div className="relative" onClick={handleAuthCheck}>
                         <select
+                            value={style}
+                            onChange={(e) => setStyle(e.target.value)}
                             disabled={!isLoggedIn}
                             className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-gray-700 outline-none hover:border-gray-400 focus:border-black disabled:cursor-pointer disabled:bg-white"
                         >
-                            <option>Cinematic</option>
-                            <option>Photographic</option>
-                            <option>Digital Art</option>
-                            <option>Oil Painting</option>
+                            <option value="사실적">사실적</option>
+                            <option value="일러스트">일러스트</option>
+                            <option value="애니메이션">애니메이션</option>
+                            <option value="수채화">수채화</option>
+                            <option value="유화">유화</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     </div>
@@ -185,41 +216,115 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
                             className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-gray-700 outline-none hover:border-gray-400 focus:border-black disabled:cursor-pointer disabled:bg-white"
                         >
                             <option value="1:1">1:1 Square</option>
+                            <option value="4:3">4:3 Landscape</option>
+                            <option value="3:4">3:4 Portrait</option>
                             <option value="16:9">16:9 Landscape</option>
                             <option value="9:16">9:16 Portrait</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     </div>
 
-                    {/* Advanced Settings (Placeholder) */}
+                    {/* Framing Selector (New) */}
+                    <div className="relative" onClick={handleAuthCheck}>
+                        <select
+                            value={framing}
+                            onChange={(e) => setFraming(e.target.value)}
+                            disabled={!isLoggedIn}
+                            className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-gray-700 outline-none hover:border-gray-400 focus:border-black disabled:cursor-pointer disabled:bg-white"
+                        >
+                            <option value="얼굴 위주">얼굴 위주 (Face)</option>
+                            <option value="가슴 위">가슴 위 (Bust)</option>
+                            <option value="상반신">상반신 (Waist Up)</option>
+                            <option value="무릎 위">무릎 위 (Knee Up)</option>
+                            <option value="전신">전신 (Full Body)</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+
+                    {/* Advanced Settings Button */}
                     <button
-                        onClick={handleAuthCheck}
-                        className="rounded-lg border border-dashed border-gray-300 py-2.5 text-sm font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                        onClick={() => {
+                            if (handleAuthCheck()) {
+                                setShowAdvanced(!showAdvanced);
+                            }
+                        }}
+                        className={`rounded-lg border border-dashed py-2.5 text-sm font-medium transition-colors ${showAdvanced
+                            ? 'border-black text-black bg-gray-50'
+                            : 'border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700'}`}
                     >
-                        + 고급 설정
+                        {showAdvanced ? "- 고급 설정 접기" : "+ 고급 설정"}
                     </button>
+
+                    {/* Image Count Display (Info only) */}
+                    <div className="text-right text-xs text-gray-400 hidden sm:block">
+                        비용: {imageCount * 2} 크레딧
+                    </div>
                 </div>
+
+                {/* Advanced Panel */}
+                {showAdvanced && (
+                    <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300 rounded-xl bg-gray-50 p-4 border border-gray-100">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            {/* Negative Prompt */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-gray-700">제외할 요소 (Negative Prompt)</label>
+                                <input
+                                    type="text"
+                                    value={negativePrompt}
+                                    onChange={(e) => setNegativePrompt(e.target.value)}
+                                    placeholder="예: 저화질, 글자, 못생긴, 손가락 기형"
+                                    className="w-full rounded-lg border border-gray-200 py-2 px-3 text-sm focus:border-black focus:outline-none"
+                                />
+                            </div>
+
+                            {/* Image Count */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-gray-700">생성 개수 (장)</label>
+                                <div className="flex gap-2">
+                                    {[1, 2, 3, 4].map((num) => (
+                                        <button
+                                            key={num}
+                                            onClick={() => setImageCount(num)}
+                                            className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${imageCount === num
+                                                ? 'bg-black text-white shadow-md'
+                                                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                                                }`}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
 
             {/* Generated Image Result (Immediately below interface) */}
-            {(generatedImage || analysis || (errorLogs && errorLogs.length > 0)) && (
+            {(generatedImages.length > 0 || analysis || (errorLogs && errorLogs.length > 0)) && (
                 <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700 w-full rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
                     <h3 className="mb-4 text-lg font-bold text-gray-900">생성된 이미지</h3>
 
-                    {generatedImage ? (
-                        <div className={`relative w-full overflow-hidden rounded-xl bg-gray-100 ${aspectRatio === "1:1" ? "aspect-square" :
-                            aspectRatio === "16:9" ? "aspect-video" :
-                                "aspect-[9/16]"
-                            }`}>
-                            <img
-                                src={generatedImage}
-                                alt="Generated Result"
-                                className="h-full w-full object-cover"
-                            />
+                    {/* Image Grid */}
+                    {generatedImages.length > 0 ? (
+                        <div className={`grid gap-4 ${generatedImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {generatedImages.map((imgUrl, idx) => (
+                                <div key={idx} className={`relative w-full overflow-hidden rounded-xl bg-gray-100 ${aspectRatio === "1:1" ? "aspect-square" :
+                                    aspectRatio === "16:9" ? "aspect-video" :
+                                        "aspect-[9/16]"
+                                    }`}>
+                                    <img
+                                        src={imgUrl}
+                                        alt={`Generated Result ${idx + 1}`}
+                                        className="h-full w-full object-cover transition-transform hover:scale-105 cursor-pointer"
+                                        onClick={() => window.open(imgUrl, '_blank')}
+                                    />
+                                </div>
+                            ))}
                         </div>
                     ) : errorLogs && errorLogs.length > 0 ? (
-                        <div className={`relative w-full overflow-hidden rounded-xl bg-red-50 flex flex-col items-center justify-center border-2 border-red-200 p-6 text-center ${aspectRatio === "1:1" ? "aspect-square" :
+                        <div className={`relative w-full overflow-hidden rounded-xl bg-red-50 flex flex-col items-center justify-center border-2 border-red-200 p-6 text-center shadow-inner ${aspectRatio === "1:1" ? "aspect-square" :
                             aspectRatio === "16:9" ? "aspect-video" :
                                 "aspect-[9/16]"
                             }`}>
@@ -228,7 +333,7 @@ export default function GeneratorInterface({ prompt, setPrompt }: GeneratorInter
                             </div>
                             <h4 className="text-base font-bold text-red-800 mb-2">Generation Failed</h4>
 
-                            {/* Error Summary List */}
+                            {/* Error List */}
                             <div className="w-full max-w-lg bg-white/50 rounded-lg p-3 text-left overflow-y-auto max-h-[140px] text-xs border border-red-100">
                                 <ul className="space-y-2">
                                     {errorLogs.map((log, index) => (
