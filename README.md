@@ -6,7 +6,7 @@
 
 Created with reference to: https://www.youtube.com/watch?v=fxi3G8kw87s
 
-Face Studio is a premium AI portrait generation web application built with **Next.js 14** and **Google Gemini/Imagen**. 
+Face Studio is a premium AI portrait generation web application built with **Next.js 14** and **Google Gemini/Imagen**.
 It features a sophisticated "Vision-to-Prompt" pipeline that allows users to create high-quality, face-consistent images in various styles.
 
 ![Face Studio UI](./public/face_studio_demo.jpg)
@@ -17,14 +17,14 @@ It features a sophisticated "Vision-to-Prompt" pipeline that allows users to cre
 - **� 5-Tier Framing Control (V6)**: Advanced dynamic framing system (Face, Bust, Waist, Knee, Full Body) with anti-crop logic.
 - **🛡️ Enhanced Safety**: Sanitized prompt engineering to bypass false-positive safety filters while maintaining quality.
 - **�👁️ Face Consistency**: Leverages **Gemini Vision (2.5-Flash)** to analyze your uploaded photo and generate a detailed description.
-- **💰 Credit System**: 
-    - Full **Purchase & Refund** flow.
-    - **FIFO (First-In-First-Out)** credit deduction logic.
-    - Pricing Plans (Starter, Basic, Pro).
-- **🔐 Secure Architecture**: 
-    - **Supabase Auth**: Secure Google & Kakao login.
-    - **Row Level Security (RLS)**: Protects user data and images.
-    - **Admin Client**: Secure server-side operations for credit management.
+- **💰 Credit System**:
+  - Full **Purchase & Refund** flow.
+  - **FIFO (First-In-First-Out)** credit deduction logic.
+  - Pricing Plans (Starter, Basic, Pro).
+- **🔐 Secure Architecture**:
+  - **Supabase Auth**: Secure Google & Kakao login.
+  - **Row Level Security (RLS)**: Protects user data and images.
+  - **Admin Client**: Secure server-side operations for credit management.
 - **📱 Responsive Design**: A beautifully crafted UI that works on Mobile and Desktop.
 
 ## 🛠️ Tech Stack
@@ -37,13 +37,15 @@ It features a sophisticated "Vision-to-Prompt" pipeline that allows users to cre
 ## 🚀 Fast Start
 
 ### 1. Clone & Install
+
 ```bash
 git clone https://github.com/your-username/face-studio.git
 cd face-studio
-npm install
+pnpm install
 ```
 
 ### 2. Environment Setup
+
 Create a `.env.local` file in the root directory:
 
 ```env
@@ -68,7 +70,9 @@ TOSS_SECRET_KEY=test_gsk_...
 ```
 
 ### 3. Database Setup (Supabase)
+
 Run the SQL scripts located in `supabase/` in the following order:
+
 1. `01_supabase_schema.sql`: Sets up Auth and Profiles tables.
 2. `02_images_and_storage.sql`: Creates Images table and Storage Buckets.
 3. `03_add_face_description.sql`: Adds columns for AI analysis.
@@ -77,24 +81,26 @@ Run the SQL scripts located in `supabase/` in the following order:
 6. `06_fix_deletion_constraint.sql`: Fixes image deletion FK constraints.
 
 ### 4. Run Locally
+
 ```bash
-npm run dev
+pnpm dev
 ```
+
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🤖 AI Model Architecture
 
 Face Studio uses a **Dual-Model Strategy**:
 
-1.  **Vision Phase (`gemini-2.5-flash`)**: 
-    -   *Input*: User Photo + Prompt
-    -   *Action*: Analyzes the user's face (eye color, hair style, ethnicity, age).
-    -   *Output*: A dense text description (Face Description).
+1.  **Vision Phase (`gemini-2.5-flash`)**:
+    - _Input_: User Photo + Prompt
+    - _Action_: Analyzes the user's face (eye color, hair style, ethnicity, age).
+    - _Output_: A dense text description (Face Description).
 
 2.  **Generation Phase (`imagen-4.0-generate-001`)**:
-    -   *Input*: Style Prompt + Face Description (Prioritized)
-    -   *Action*: Generates a high-fidelity image merging the style and the person's description.
-    -   *Output*: Final consistent character image.
+    - _Input_: Style Prompt + Face Description (Prioritized)
+    - _Action_: Generates a high-fidelity image merging the style and the person's description.
+    - _Output_: Final consistent character image.
 
 ## 💾 Storage & Persistence
 
@@ -103,7 +109,9 @@ Face Studio uses a **Dual-Model Strategy**:
 - **Credits**: Managed via `credit_sources` (Balance) and `credit_transactions` (Ledger) tables.
 
 ## 👤 Author
+
 Developed with ❤️ by **Face Studio Team**
 
 ## 📄 License
+
 MIT License
